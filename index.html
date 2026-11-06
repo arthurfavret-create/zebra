@@ -3,229 +3,161 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zebra — test Bluetooth</title>
+<meta name="robots" content="noindex">
+<title>Zebra Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Permanent+Marker&family=Special+Elite&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#f6f5f2; --fg:#1d1d1b; --mute:#6b6a66; --line:#d9d7d1; --ok:#1f7a3f; --err:#b3261e; --acc:#1d1d1b; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecebe7; --mute:#9a9893; --line:#33322f; --ok:#5bc27f; --err:#ff8a80; --acc:#ecebe7; } }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  main { max-width:640px; margin:0 auto; padding:24px 18px 48px; }
-  h1 { font-size:22px; margin:0 0 4px; }
-  p.sub { margin:0 0 20px; color:var(--mute); }
-  .status { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin-bottom:16px; }
-  .dot { width:10px; height:10px; border-radius:50%; background:var(--mute); flex:none; }
+  :root {
+    --bg:#f4f3ef; --card:#ffffff; --fg:#1c1c1a; --mute:#75736d; --line:#e0ded7;
+    --acc:#1c1c1a; --acc-fg:#ffffff; --ok:#1f7a3f; --err:#b3261e; --warn:#9a6700;
+    --paper:#fffdf8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141413; --card:#1e1e1c; --fg:#ecebe6; --mute:#9b9993; --line:#33322e;
+      --acc:#ecebe6; --acc-fg:#141413; --ok:#5bc27f; --err:#ff8a80; --warn:#e3b341; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  button, select, input, textarea { font:inherit; color:inherit; }
+
+  header { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:12px; padding:12px 16px; }
+  header h1 { font-size:19px; margin:0; flex:1; letter-spacing:-.01em; }
+  .status { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--mute); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--mute); }
   .dot.on { background:var(--ok); } .dot.err { background:var(--err); }
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
-  button { font:inherit; font-weight:600; padding:14px 12px; border-radius:12px; border:1px solid var(--acc); background:var(--acc); color:var(--bg); cursor:pointer; }
-  button.ghost { background:transparent; color:var(--fg); border-color:var(--line); }
-  button:disabled { opacity:.4; cursor:default; }
-  label { display:block; font-size:14px; color:var(--mute); margin:18px 0 6px; }
-  textarea { width:100%; min-height:220px; font:13px/1.4 ui-monospace, Menlo, monospace; padding:10px; border-radius:10px; border:1px solid var(--line); background:transparent; color:var(--fg); }
-  select { font:inherit; padding:8px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--fg); }
-  #log { font:12.5px/1.5 ui-monospace, Menlo, monospace; white-space:pre-wrap; border:1px solid var(--line); border-radius:10px; padding:10px; min-height:120px; max-height:300px; overflow:auto; }
-  .l-ok { color:var(--ok); } .l-err { color:var(--err); }
-  .inline { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  details { margin-top:22px; border-top:1px solid var(--line); padding-top:14px; }
-  summary { cursor:pointer; font-weight:600; }
-  code { font:13px ui-monospace, Menlo, monospace; }
+
+  .btn { border:1px solid var(--acc); background:var(--acc); color:var(--acc-fg); border-radius:10px;
+    padding:9px 14px; font-weight:600; cursor:pointer; }
+  .btn.ghost { background:transparent; color:var(--fg); border-color:var(--line); }
+  .btn.small { padding:6px 10px; font-size:14px; }
+  .btn:disabled { opacity:.4; cursor:default; }
+
+  main { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; padding:16px; max-width:1100px; margin:0 auto 110px; }
+  @media (min-width: 820px) { main { grid-template-columns:minmax(0,1fr) 430px; } .preview-col { position:sticky; top:72px; align-self:start; } }
+
+  .seg { display:grid; grid-template-columns:1fr 1fr; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:4px; gap:4px; }
+  .seg button { border:0; background:transparent; padding:10px 8px; border-radius:9px; font-weight:600; cursor:pointer; line-height:1.2; }
+  .seg button small { display:block; font-weight:400; font-size:12px; color:var(--mute); }
+  .seg button.active { background:var(--acc); color:var(--acc-fg); }
+  .seg button.active small { color:inherit; opacity:.75; }
+
+  .opts { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin:12px 2px; font-size:14px; color:var(--mute); }
+  .opts label { display:flex; align-items:center; gap:6px; }
+  select, input[type=text], input[type=number] { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+  input[type=range] { width:120px; }
+
+  .block { background:var(--card); border:1px solid var(--line); border-radius:14px; margin:10px 0; overflow:hidden; }
+  .block-head { display:flex; align-items:center; gap:6px; padding:8px 10px 8px 14px; border-bottom:1px solid var(--line); }
+  .block-head strong { flex:1; font-size:14px; }
+  .icon-btn { border:1px solid var(--line); background:transparent; border-radius:8px; width:34px; height:30px; cursor:pointer; font-size:15px; }
+  .block-body { padding:10px 14px 12px; }
+  .block-body textarea { width:100%; min-height:110px; border:1px solid var(--line); border-radius:10px; padding:10px;
+    background:transparent; resize:vertical; font:15px/1.45 ui-monospace, Menlo, monospace; }
+  .block-body .opts { margin:8px 0 0; }
+  .hint { font-size:12.5px; color:var(--mute); margin:6px 0 0; }
+
+  .add { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 6px; }
+
+  .preview-col h2 { font-size:14px; color:var(--mute); font-weight:600; margin:2px 0 8px; text-transform:uppercase; letter-spacing:.04em; }
+  .preview { background:#d8d6cf; border-radius:14px; padding:16px; display:flex; flex-direction:column; align-items:center; gap:14px;
+    max-height:calc(100vh - 230px); overflow:auto; }
+  @media (prefers-color-scheme: dark) { .preview { background:#2a2a27; } }
+  .preview canvas { width:100%; max-width:384px; height:auto; image-rendering:pixelated; background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.25); }
+  .pinfo { font-size:13px; color:var(--mute); margin-top:8px; }
+  .pinfo.warn { color:var(--warn); }
+
+  .bar { position:fixed; left:0; right:0; bottom:0; z-index:10; background:var(--bg); border-top:1px solid var(--line);
+    display:flex; align-items:center; gap:12px; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .bar .grow { flex:1; min-width:0; }
+  .progress { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:6px; display:none; }
+  .progress > div { height:100%; width:0; background:var(--ok); transition:width .1s; }
+  #msg { font-size:13.5px; color:var(--mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #msg.err { color:var(--err); } #msg.ok { color:var(--ok); }
+  .btn.print { padding:13px 22px; font-size:17px; }
+
+  details.more { margin-top:18px; font-size:14px; color:var(--mute); }
+  details.more summary { cursor:pointer; }
+  #log { font:12px/1.5 ui-monospace, Menlo, monospace; white-space:pre-wrap; max-height:180px; overflow:auto; margin-top:8px; }
+  .empty { color:var(--mute); font-size:14px; padding:18px; text-align:center; border:1px dashed var(--line); border-radius:14px; }
 </style>
 </head>
 <body>
-<main>
-  <h1>Zebra ZQ310 — test Bluetooth</h1>
-  <p class="sub">Connexion directe en BLE, sans l'appli Zebra. À ouvrir dans Bluefy.</p>
-
+<header>
+  <h1>Zebra Studio</h1>
   <div class="status"><span class="dot" id="dot"></span><span id="state">Non connectée</span></div>
+  <button class="btn small" id="btnConnect">Connecter</button>
+</header>
 
-  <div class="row">
-    <button id="btnConnect">Connecter</button>
-    <button id="btnPrint" disabled>Imprimer le test</button>
-  </div>
-  <div class="row">
-    <button class="ghost" id="btnDisconnect" disabled>Déconnecter</button>
-    <button class="ghost" id="btnCopy">Copier le ZPL</button>
-  </div>
+<main>
+  <section>
+    <div class="seg" id="modeSeg">
+      <button data-mode="tpe">Ticket long<small>papier continu, sans limite</small></button>
+      <button data-mode="dymo">Étiquette DYMO<small>54 × 101 mm, à recoller</small></button>
+    </div>
 
-  <label style="margin-top:0">Journal <span style="font-size:12px">(version 3 — GitHub)</span></label>
-  <div id="log" style="margin-bottom:16px"></div>
+    <div class="opts">
+      <label>Police
+        <select id="gFont"></select>
+      </label>
+      <label id="frameWrap"><input type="checkbox" id="gFrame"> Cadre</label>
+      <label>Copies <input type="number" id="gCopies" min="1" max="20" value="1" style="width:60px"></label>
+    </div>
 
-  <div class="inline">
-    <label for="chunk" style="margin:0">Taille des paquets</label>
-    <select id="chunk">
-      <option value="20" selected>20 octets (sûr)</option>
-      <option value="100">100 octets</option>
-      <option value="180">180 octets</option>
-      <option value="500">500 octets (rapide)</option>
-    </select>
-  </div>
+    <div id="blocks"></div>
 
-  <label for="zpl">ZPL envoyé (modifiable)</label>
-  <textarea id="zpl" spellcheck="false"></textarea>
-  <div class="inline" style="margin-top:8px">
-    <button class="ghost" id="btnReset" style="padding:8px 12px">Remettre le ticket de test</button>
-  </div>
+    <div class="add">
+      <button class="btn ghost small" data-add="text">+ Texte</button>
+      <button class="btn ghost small" data-add="image">+ Image / PDF</button>
+      <button class="btn ghost small" data-add="qr">+ QR code</button>
+      <button class="btn ghost small" data-add="sep">+ Séparateur</button>
+      <button class="btn ghost small" data-add="space">+ Espace</button>
+      <button class="btn small" id="btnImport">Importer un fichier</button>
+      <button class="btn ghost small" id="btnClear">Tout effacer</button>
+    </div>
+    <p class="hint">Fichiers acceptés : Markdown (.md), texte (.txt), images (JPG, PNG, HEIC…) et PDF. Dans les textes, {date} et {heure} sont remplacés à l'impression.</p>
 
+    <details class="more">
+      <summary>Réglages avancés et journal</summary>
+      <div class="opts">
+        <label>Taille des paquets Bluetooth
+          <select id="chunk">
+            <option value="20">20 octets (sûr)</option>
+            <option value="100">100 octets</option>
+            <option value="180">180 octets (rapide)</option>
+          </select>
+        </label>
+        <button class="btn ghost small" id="btnCopyZpl">Copier le ZPL</button>
+      </div>
+      <div id="log"></div>
+    </details>
+  </section>
 
-  <details>
-    <summary>La Zebra n'apparaît pas dans la liste ?</summary>
-    <p>Le Bluetooth basse consommation (BLE) est peut-être désactivé sur l'imprimante. Envoie une fois cette commande via l'appli Zebra (comme un fichier ZPL), puis éteins et rallume l'imprimante :</p>
-    <p><code>! U1 setvar "bluetooth.le.controller_mode" "both"</code></p>
-    <p>Pense aussi à fermer l'appli Zebra pendant le test : elle peut garder la connexion pour elle.</p>
-  </details>
+  <section class="preview-col">
+    <h2>Aperçu impression</h2>
+    <div class="preview" id="preview"></div>
+    <div class="pinfo" id="pinfo"></div>
+  </section>
 </main>
 
-<script>
-// Service « Parser » BLE des imprimantes Zebra Link-OS
-const ZEBRA_PARSER_SERVICE = '38eb4a80-c570-11e3-9507-0002a5d5c51b';
-const ZEBRA_WRITE_CHAR     = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
-const ZEBRA_READ_CHAR      = '38eb4a81-c570-11e3-9507-0002a5d5c51b';
+<div class="bar">
+  <div class="grow">
+    <div id="msg">Prêt.</div>
+    <div class="progress" id="progress"><div></div></div>
+  </div>
+  <button class="btn print" id="btnPrint">Imprimer</button>
+</div>
 
-const $ = id => document.getElementById(id);
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, rej) => setTimeout(() => rej(new Error('délai dépassé (' + label + ', ' + ms / 1000 + ' s)')), ms))
-  ]);
-}
-window.addEventListener('error', e => log('Erreur JS : ' + e.message, 'l-err'));
-window.addEventListener('unhandledrejection', e => log('Erreur : ' + (e.reason && e.reason.message || e.reason), 'l-err'));
-let device = null, writeChar = null;
+<input type="file" id="fileAny" multiple hidden>
+<input type="file" id="fileImage" accept="image/*,application/pdf,.pdf" hidden>
 
-function log(msg, cls) {
-  const line = document.createElement('div');
-  const t = new Date().toLocaleTimeString('fr-FR');
-  line.textContent = `[${t}] ${msg}`;
-  if (cls) line.className = cls;
-  $('log').appendChild(line);
-  $('log').scrollTop = $('log').scrollHeight;
-}
-function setState(text, kind) {
-  $('state').textContent = text;
-  $('dot').className = 'dot' + (kind ? ' ' + kind : '');
-}
-function setConnected(on) {
-  $('btnPrint').disabled = !on;
-  $('btnDisconnect').disabled = !on;
-  $('btnConnect').disabled = on;
-}
-
-// Ticket de test — règles du projet : 384 points, UTF-8, papier TPE continu,
-// marge de déchirement de 140 points en haut et en bas.
-function testZpl() {
-  const d = new Date();
-  const stamp = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-  // QR « ZEBRA OK » = 8 octets → version 1 → 21 modules × 5 = 105 points ; x = (384-105)/2 ≈ 139
-  // Code 128 « 12345678 » en ^BY2 ≈ 158 points ; x = (384-158)/2 = 113
-  return [
-    '^XA',
-    '^CI28',
-    '^PW384',
-    '^MNN',
-    '^LL735',
-    '^LH0,0',
-    '^FO0,140^FB384,1,0,C^A0N,40,40^FDTEST ZEBRA^FS',
-    '^FO0,195^FB384,1,0,C^A0N,26,26^FDAccents : é è à ç ù ô^FS',
-    '^FO20,240^GB344,3,3^FS',
-    '^FO113,260^BY2^BCN,60,Y,N,N,A^FD12345678^FS',
-    '^FO139,365^BQN,2,5^FDMA,ZEBRA OK^FS',
-    '^FO0,510^FB384,1,0,C^A0N,22,22^FD' + stamp + '^FS',
-    '^FO20,545^GB344,50,2^FS',
-    '^FO20,558^FB344,1,0,C^A0N,24,24^FDConnexion BLE OK^FS',
-    '^XZ'
-  ].join('\n');
-}
-$('zpl').value = testZpl();
-$('btnReset').onclick = () => { $('zpl').value = testZpl(); log('Ticket de test remis.'); };
-
-$('btnConnect').onclick = async () => {
-  if (!('bluetooth' in navigator)) {
-    log('Bluetooth web indisponible dans ce navigateur. Ouvre la page dans Bluefy.', 'l-err');
-    setState('Bluetooth web indisponible', 'err');
-    return;
-  }
-  try {
-    log('Recherche des appareils…');
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [ZEBRA_PARSER_SERVICE]
-    });
-    log('Appareil choisi : ' + (device.name || '(sans nom)') + ' — id ' + device.id);
-    device.addEventListener('gattserverdisconnected', () => {
-      log('Imprimante déconnectée.', 'l-err');
-      setState('Déconnectée', '');
-      writeChar = null; setConnected(false);
-    });
-    setState('Connexion…');
-    log('Étape 1/3 : connexion GATT (15 s max)…');
-    const server = await withTimeout(device.gatt.connect(), 15000, 'connexion GATT');
-    log('Connecté au serveur GATT.', 'l-ok');
-    log('Étape 2/3 : recherche du service Zebra…');
-    let service;
-    try {
-      service = await withTimeout(server.getPrimaryService(ZEBRA_PARSER_SERVICE), 10000, 'service Zebra');
-    } catch (e) {
-      log('Service Zebra absent : ' + (e.message || e), 'l-err');
-      try {
-        const all = await withTimeout(server.getPrimaryServices(), 10000, 'liste des services');
-        log('Services visibles : ' + (all.length ? all.map(s => s.uuid).join(', ') : 'aucun'));
-      } catch (e2) { log('Impossible de lister les services : ' + (e2.message || e2), 'l-err'); }
-      throw e;
-    }
-    log('Service Zebra trouvé.', 'l-ok');
-    log('Étape 3/3 : canal d\'écriture…');
-    writeChar = await withTimeout(service.getCharacteristic(ZEBRA_WRITE_CHAR), 10000, 'canal d\'écriture');
-    log('Canal d\'écriture prêt.', 'l-ok');
-    try {
-      const readChar = await service.getCharacteristic(ZEBRA_READ_CHAR);
-      await readChar.startNotifications();
-      readChar.addEventListener('characteristicvaluechanged', e => {
-        const txt = new TextDecoder().decode(e.target.value);
-        log('Réponse imprimante : ' + txt.trim());
-      });
-    } catch (_) { /* canal de lecture facultatif */ }
-    setState('Connectée : ' + (device.name || 'Zebra'), 'on');
-    setConnected(true);
-  } catch (err) {
-    const name = err && err.name ? err.name : 'Erreur';
-    log(name + ' — ' + (err && err.message ? err.message : err), 'l-err');
-    if (name === 'SecurityError') log('Le cadre de la page bloque probablement le Bluetooth.', 'l-err');
-    if (name === 'NotFoundError') log('Aucun appareil choisi, ou service Zebra introuvable.', 'l-err');
-    setState('Échec de connexion', 'err');
-  }
-};
-
-$('btnPrint').onclick = async () => {
-  if (!writeChar) return;
-  const data = new TextEncoder().encode($('zpl').value);
-  const size = parseInt($('chunk').value, 10);
-  $('btnPrint').disabled = true;
-  const t0 = performance.now();
-  try {
-    log(`Envoi de ${data.length} octets en paquets de ${size}…`);
-    for (let i = 0; i < data.length; i += size) {
-      const part = data.slice(i, i + size);
-      if (writeChar.writeValueWithResponse) await writeChar.writeValueWithResponse(part);
-      else await writeChar.writeValue(part);
-    }
-    log(`Envoyé en ${Math.round(performance.now() - t0)} ms.`, 'l-ok');
-  } catch (err) {
-    log('Échec d\'envoi : ' + (err.name || '') + ' — ' + (err.message || err), 'l-err');
-    log('Essaie une taille de paquet plus petite.', 'l-err');
-  } finally {
-    $('btnPrint').disabled = !writeChar;
-  }
-};
-
-$('btnDisconnect').onclick = () => {
-  if (device && device.gatt.connected) device.gatt.disconnect();
-};
-
-$('btnCopy').onclick = async () => {
-  try { await navigator.clipboard.writeText($('zpl').value); log('ZPL copié.', 'l-ok'); }
-  catch (_) { $('zpl').select(); log('Copie refusée : le texte est sélectionné, copie-le à la main.'); }
-};
-
-log('Page prête. Bluetooth web : ' + (('bluetooth' in navigator) ? 'disponible' : 'absent'));
-</script>
+<script src="lib/qrcode.js"></script>
+<script src="lib/qrcode_UTF8.js"></script>
+<script src="lib/pdf.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
