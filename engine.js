@@ -340,6 +340,11 @@ function slice(strip, maxH, bounds) {
 }
 async function compose() {
   await ensureFonts();
+  if (state.mode === 'dymo' && state.label && state.label.tpl !== 'free') {
+    const r = composeLabel(state.label);
+    const pages = [r.print]; pages.view = r.view; pages.fit = r.fit;
+    return pages;
+  }
   const g = contentGeometry();
   const strip = await composeStrip(g.W);
   const pages = [];
@@ -362,6 +367,7 @@ async function compose() {
   }
   return pages;
 }
+
 
 // ---------- Encodage ZPL ----------
 const HEX = '0123456789ABCDEF';

@@ -2,7 +2,7 @@
 'use strict';
 
 // ---------- État ----------
-let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [] };
+let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
 let nextId = 1;
 let selectedId = null;
 const imageCache = new Map();
@@ -37,7 +37,7 @@ function save() { try { localStorage.setItem('zebra-studio-v2', JSON.stringify(s
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem('zebra-studio-v2') || localStorage.getItem('zebra-studio') || 'null');
-    if (s && Array.isArray(s.blocks)) { state = Object.assign(state, s); state.blocks.forEach(b => b.id = nextId++); return true; }
+    if (s && Array.isArray(s.blocks)) { state = Object.assign(state, s); state.label = Object.assign(defaultLabel(), s.label || {}); state.blocks.forEach(b => b.id = nextId++); return true; }
   } catch (_) {}
   return false;
 }
@@ -67,11 +67,16 @@ async function renderPreview() {
   const seq = ++renderSeq;
   const pages = await compose();
   if (seq !== renderSeq) return;
-  const paper = $('paper'); paper.className = 'paper ' + state.mode; paper.innerHTML = '';
-  pages.forEach(p => paper.appendChild(p));
+  const paper = $('paper'); paper.innerHTML = '';
+  const tplMode = isLabelTpl();
+  paper.className = 'paper ' + state.mode + (tplMode && state.label.orient === 'land' ? ' land' : '');
+  if (tplMode) paper.appendChild(pages.view); else pages.forEach(p => paper.appendChild(p));
+  if (tplMode) updateTip(pages.fit);
   let black = 0, px = 0;
   pages.forEach(p => { const d = p.getContext('2d').getImageData(0, 0, p.width, p.height).data; for (let i = 0; i < d.length; i += 32) { px++; if (d[i] < 128) black++; } });
-  let info = state.mode === 'dymo'
+  let info = isLabelTpl()
+    ? (state.label.orient === 'land' ? 'Étiquette couchée · 101 × 48 mm' : 'Étiquette debout · 48 × 101 mm')
+    : state.mode === 'dymo'
     ? `${pages.length} étiquette${pages.length > 1 ? 's' : ''}`
     : `Ticket de ${(pages[0].height / 80).toFixed(1).replace('.', ',')} cm` + (state.blocks.some(b => b.type === 'list') && pages[0].height <= TPE_LIST_MIN ? ' (minimum liste)' : '');
   if (state.copies > 1) info += ` · ${state.copies} exemplaires`;
@@ -352,6 +357,12 @@ function kindOf(f) {
 }
 function addText(txt) {
   txt = txt.replace(/\r/g, '').trim(); if (!txt) return;
+  if (isLabelTpl()) {
+    const [t, s, d] = txt.split('\n').map(x => x.trim()).filter(Boolean);
+    const L = state.label; L.title = t || ''; L.subtitle = s || ''; L.detail = d || '';
+    L.touched = { title: !!t, subtitle: !!s, detail: !!d };
+    renderLabelEditor(); changed(); toast('Texte placé sur l\'étiquette ✓'); return;
+  }
   if (looksLikeList(txt)) {
     const lines = txt.split('\n'); let title = '';
     if (!/^\s*([-*+•]|\d+[.)]|\[)/.test(lines[0])) title = lines.shift().replace(/^#+\s*/, '').replace(/\s*[:：]\s*$/, '').trim();
@@ -360,6 +371,9 @@ function addText(txt) {
   } else { addBlock('text', { text: txt }); toast('Texte ajouté'); }
 }
 async function importFiles(files, target) {
+  if (isLabelTpl() && files.some(f => kindOf(f) === 'image' || kindOf(f) === 'pdf')) {
+    state.label.tpl = 'free'; syncTop(); toast('Passage en étiquette libre pour placer l\'image');
+  }
   for (const f of files) {
     const k = kindOf(f);
     try {
@@ -498,15 +512,106 @@ $('btnPrint').onclick = async () => {
   } finally { printing = false; paper.classList.remove('printing'); }
 };
 
+
+// ---------- Éditeur d'étiquette ----------
+function isLabelTpl() { return state.mode === 'dymo' && state.label.tpl !== 'free'; }
+function applyTpl(k) {
+  const L = state.label;
+  if (k === 'free') { L.tpl = 'free'; syncTop(); changed(); renderBlocks(); return; }
+  const t = LABEL_TPLS[k];
+  Object.assign(L, { tpl: k, orient: t.orient, frame: t.frame, upper: t.upper, align: t.align, icon: t.icon, qrOn: t.qrOn });
+  L.touched = L.touched || {};
+  ['title', 'subtitle', 'detail', 'qr'].forEach(f => { if (!L.touched[f]) L[f] = t.ex[f] || ''; });
+  syncTop(); changed();
+}
+function miniFrame(style) {
+  const c = document.createElement('canvas'); c.width = 150; c.height = 84;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 150, 84);
+  drawFrame(x, style, 150, 84);
+  if (style === 'none') { x.fillStyle = '#aaa'; x.font = '600 22px sans-serif'; x.textAlign = 'center'; x.fillText('aucun', 75, 50); }
+  return c;
+}
+let tipBox = null;
+function updateTip(fit) {
+  if (!tipBox) return;
+  const L = state.label, T = labelTexts(L);
+  const mm = fit ? Math.round(fit.s * 0.72 / 8) : 0; // hauteur approximative des majuscules
+  let icon = '💡', text;
+  if (!T.title) text = 'Commence par un <b>titre</b> : c\'est lui qui prendra toute la place.';
+  else if (mm >= 9) { icon = '👌'; text = `Titre ajusté et centré automatiquement : <b>${mm} mm</b> de haut, lisible de loin.`; }
+  else if (mm >= 5) { icon = '👍'; text = `Titre à <b>${mm} mm</b>. ${L.orient === 'port' ? 'En étiquette <b>couchée</b>, il pourrait être plus grand.' : 'Raccourcis-le ou retire le sous-titre pour le grossir.'}`; }
+  else { icon = '⚠️'; text = `Titre très petit (<b>${mm || 1} mm</b>). Raccourcis le texte${L.qrOn ? ' ou retire le QR' : ''}.`; }
+  tipBox.innerHTML = `<span style="font-size:20px">${icon}</span><span>${text}</span>`;
+}
+function renderLabelEditor() {
+  const box = $('labelEditor'); box.innerHTML = '';
+  const L = state.label;
+  // modèles
+  const tpls = h('div', { class: 'tpls' });
+  Object.entries(LABEL_TPLS).forEach(([k, t]) => {
+    const demo = Object.assign({}, t, { tpl: k, flip: false, title: t.ex.title, subtitle: t.ex.subtitle, detail: t.ex.detail, qr: t.ex.qr || '' });
+    let mini; try { mini = composeLabel(demo, { viewOnly: true }).view; } catch (_) { mini = h('span', {}, '🏷️'); }
+    tpls.append(h('button', { class: 'tpl' + (L.tpl === k ? ' active' : ''), onclick: () => applyTpl(k) }, h('div', { class: 'mini' }, mini), t.name));
+  });
+  tpls.append(h('button', { class: 'tpl' + (L.tpl === 'free' ? ' active' : ''), onclick: () => applyTpl('free') },
+    h('div', { class: 'mini free' }, '✏️'), 'Libre'));
+  box.append(tpls);
+  if (L.tpl === 'free') return;
+
+  const set = (k, v) => { L[k] = v; changed(); };
+  const typed = (k, v) => { L[k] = v; L.touched = L.touched || {}; L.touched[k] = !!v; changed(); };
+  const detail = h('input', { class: 'small', value: L.detail, placeholder: 'Petit texte : date, quantité, pièce…', oninput: e => typed('detail', e.target.value) });
+  box.append(h('div', { class: 'lcard' },
+    h('input', { class: 'big', value: L.title, placeholder: 'Titre', oninput: e => typed('title', e.target.value) }),
+    h('input', { class: 'small', value: L.subtitle, placeholder: 'Sous-titre (facultatif)', oninput: e => typed('subtitle', e.target.value) }),
+    h('div', { class: 'detailwrap' }, detail,
+      h('button', { class: 'mini-chip', onclick: () => { detail.value = (detail.value ? detail.value + ' ' : '') + '{date}'; typed('detail', detail.value); } }, '+ date'))));
+
+  // déco
+  const frames = h('div', { class: 'frames' });
+  LABEL_FRAMES.forEach(fr => {
+    const b = h('button', { class: L.frame === fr ? 'on' : '', title: fr, onclick: () => { frames.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); set('frame', fr); } }, miniFrame(fr));
+    frames.append(b);
+  });
+  const icons = h('div', { class: 'icons' });
+  LABEL_ICONS.forEach(ic => {
+    const b = h('button', { class: L.icon === ic ? 'on' : '', onclick: () => { icons.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); set('icon', ic); } }, ic ? ic + '︎' : '∅');
+    icons.append(b);
+  });
+  const orient = h('div', { class: 'orient' });
+  [['land', 'Couchée', 'width:26px;height:14px'], ['port', 'Debout', 'width:14px;height:24px']].forEach(([v, lab, st]) => {
+    const b = h('button', { class: L.orient === v ? 'on' : '', onclick: () => { orient.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); set('orient', v); } }, h('i', { style: st }), lab);
+    orient.append(b);
+  });
+  const qrInput = h('input', { class: 'small', value: L.qr, placeholder: 'Lien ou texte du QR code', style: L.qrOn ? '' : 'display:none', oninput: e => typed('qr', e.target.value) });
+  const toggle = (on, label, fn) => { const t = h('button', { class: 'toggle' + (on ? ' on' : ''), onclick: () => { t.classList.toggle('on'); fn(t.classList.contains('on')); } }, h('i'), label); return t; };
+  box.append(h('div', { class: 'lcard' },
+    h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Sens'), orient,
+      toggle(L.flip, 'Retourner', v => set('flip', v))),
+    h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Cadre'), frames),
+    h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Icône'), icons),
+    h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Style'),
+      toggle(L.upper, 'MAJUSCULES', v => set('upper', v)),
+      seg(L.align, [['center', 'Centré'], ['left', 'À gauche']], v => set('align', v))),
+    h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'QR code'),
+      toggle(L.qrOn, L.qrOn ? 'Activé' : 'Ajouter', v => { set('qrOn', v); qrInput.style.display = v ? '' : 'none'; if (v) qrInput.focus(); })),
+    qrInput));
+  tipBox = h('div', { class: 'tip' });
+  box.append(tipBox);
+}
+
 // ---------- Réglages globaux ----------
 function syncTop() {
   document.querySelectorAll('.mode').forEach(m => m.classList.toggle('active', m.dataset.mode === state.mode));
   const f = $('fonts'); f.innerHTML = '';
   Object.entries(FONT_CHIPS).forEach(([k, label]) => {
-    f.append(h('button', { class: 'chip' + (state.font === k ? ' active' : ''), onclick: () => { state.font = k; syncTop(); changed(); refreshThumbs(); } },
+    f.append(h('button', { class: 'chip' + (state.font === k ? ' active' : ''), onclick: () => { state.font = k; syncTop(); changed(); refreshThumbs(); document.fonts.load(`bold 40px ${FONTS[k].css}`).then(() => { if (state.mode === 'dymo') renderLabelEditor(); changed(); }); } },
       h('span', { class: 'aa', style: `font-family:${FONTS[k].css}` }, 'Aa'), h('small', {}, label)));
   });
-  if (state.mode === 'dymo') {
+  $('labelEditor').style.display = isLabelTpl() ? '' : 'none';
+  $('freeEditor').style.display = isLabelTpl() ? 'none' : '';
+  if (state.mode === 'dymo') renderLabelEditor();
+  if (state.mode === 'dymo' && !isLabelTpl()) {
     f.append(h('button', { class: 'toggle' + (state.frame ? ' on' : ''), onclick: () => { state.frame = !state.frame; syncTop(); changed(); refreshThumbs(); } }, h('i'), 'Cadre'));
   }
   $('cVal').textContent = '×' + state.copies;
