@@ -66,7 +66,7 @@ async function renderPreview() {
   pages.forEach(p => { const d = p.getContext('2d').getImageData(0, 0, p.width, p.height).data; for (let i = 0; i < d.length; i += 32) { px++; if (d[i] < 128) black++; } });
   let info = state.mode === 'dymo'
     ? `${pages.length} étiquette${pages.length > 1 ? 's' : ''}`
-    : `Ticket de ${(pages[0].height / 80).toFixed(1).replace('.', ',')} cm`;
+    : `Ticket de ${(pages[0].height / 80).toFixed(1).replace('.', ',')} cm` + (state.blocks.some(b => b.type === 'list') && pages[0].height <= TPE_LIST_MIN ? ' (minimum liste)' : '');
   if (state.copies > 1) info += ` · ${state.copies} exemplaires`;
   const warn = px && black / px > 0.3;
   if (warn) info += ' · beaucoup de noir, pense à éclaircir';

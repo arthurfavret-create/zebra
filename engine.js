@@ -10,6 +10,7 @@ const DYMO_LL = 848;            // pas 106 mm (étiquette + espace)
 const DYMO_LH = 41;             // décalage de l'espace de 5 mm
 const DYMO_INSET = 10;          // zone utile x 10..374, y 10..797
 const BLOCK_GAP = 14;
+const TPE_LIST_MIN = 1200;      // 15 cm minimum dès qu'il y a une liste (8 points/mm)
 
 const ZEBRA_SERVICE = '38eb4a80-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_WRITE   = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
@@ -352,7 +353,9 @@ async function compose() {
       pages.push(p);
     }
   } else {
-    const p = document.createElement('canvas'); p.width = PW; p.height = strip.height + TPE_MARGIN * 2;
+    // une liste imprime toujours au moins 15 cm de papier (blanc ajouté en bas)
+    const minH = state.blocks.some(b => b.type === 'list') ? TPE_LIST_MIN : 0;
+    const p = document.createElement('canvas'); p.width = PW; p.height = Math.max(strip.height + TPE_MARGIN * 2, minH);
     const x = p.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, PW, p.height);
     x.drawImage(strip, g.x, TPE_MARGIN);
     pages.push(p);
