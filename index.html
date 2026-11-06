@@ -170,6 +170,8 @@
     transition:all .25s; pointer-events:none; }
   .toast.show { opacity:1; transform:translate(-50%, 0); }
   .toast.err { background:var(--pink); color:#fff; }
+  .toast.act { pointer-events:auto; display:flex; align-items:center; gap:14px; }
+  .toast button { border:0; background:var(--pink); color:#fff; font-weight:700; border-radius:10px; padding:7px 12px; }
   .sheet-bg { position:fixed; inset:0; background:rgba(10,8,15,.45); z-index:40; display:none; align-items:flex-end; justify-content:center; }
   .sheet-bg.open { display:flex; }
   .sheet { background:var(--card); width:min(560px, 100%); border-radius:26px 26px 0 0; padding:20px 22px calc(24px + env(safe-area-inset-bottom)); max-height:85vh; overflow:auto; animation:up .25s ease-out; }
@@ -191,6 +193,7 @@
   <div class="logo"></div>
   <h1>Zebra <span>Studio</span></h1>
   <button class="pill" id="btnConnect"><span class="dot"></span><span id="state">Connecter</span></button>
+  <button class="round" id="btnWipe" aria-label="Tout effacer" title="Tout effacer">🧹</button>
   <button class="round" id="btnSettings" aria-label="Réglages">⚙︎</button>
 </header>
 

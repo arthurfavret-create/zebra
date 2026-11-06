@@ -17,10 +17,17 @@ function log(m) {
   $('log').appendChild(d); $('log').scrollTop = $('log').scrollHeight;
 }
 let toastTimer;
-function toast(text, err) {
-  const t = $('toast'); t.textContent = text; t.className = 'toast show' + (err ? ' err' : '');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = 'toast', err ? 4500 : 2600);
+function toast(text, err, action) {
+  const t = $('toast'); t.textContent = text; t.className = 'toast show' + (err ? ' err' : '') + (action ? ' act' : '');
+  if (action) t.append(h('button', { onclick: () => { t.className = 'toast'; action.run(); } }, action.label));
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = 'toast', action ? 6000 : err ? 4500 : 2600);
   log(text);
+}
+function wipeAll() {
+  if (!state.blocks.length) { toast('C\'est déjà tout propre ✨'); return; }
+  const backup = state.blocks.slice();
+  state.blocks = []; selectedId = null; renderBlocks(); changed();
+  toast('Tout est effacé 🧹', false, { label: 'Annuler', run: () => { state.blocks = backup; renderBlocks(); changed(); toast('Restauré'); } });
 }
 window.addEventListener('error', e => log('Erreur JS : ' + e.message));
 window.addEventListener('unhandledrejection', e => log('Erreur : ' + (e.reason && e.reason.message || e.reason)));
@@ -529,12 +536,8 @@ $('btnCopyZpl').onclick = async () => {
   try { await navigator.clipboard.writeText(zpl); toast(`ZPL copié (${Math.round(zpl.length / 1024)} Ko)`); }
   catch (_) { toast('Copie refusée par le navigateur', true); }
 };
-$('btnClear').onclick = () => {
-  const b = $('btnClear');
-  if (b.dataset.armed) { state.blocks = []; selectedId = null; renderBlocks(); changed(); $('sheetBg').classList.remove('open'); delete b.dataset.armed; b.textContent = 'Tout effacer'; toast('Page blanche ✨'); return; }
-  b.dataset.armed = '1'; b.textContent = 'Sûr ? Touche encore';
-  setTimeout(() => { delete b.dataset.armed; b.textContent = 'Tout effacer'; }, 3000);
-};
+$('btnClear').onclick = () => { $('sheetBg').classList.remove('open'); wipeAll(); };
+$('btnWipe').onclick = wipeAll;
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
