@@ -171,6 +171,7 @@ function card(b) {
     requestAnimationFrame(() => autosize(ta));
     c._onSelect = on => { ta.style.display = on ? '' : 'none'; preview.style.display = on ? 'none' : ''; if (on) autosize(ta); };
     more.append(
+      h('button', { class: 'ai-btn', onclick: e => { e.stopPropagation(); openAI(b); } }, '🎙️ Avec Claude'),
       h('button', { class: 'magic', onclick: e => { e.stopPropagation(); ta.value = tidyList(ta.value); autosize(ta); set('items', ta.value); refreshPreview(); toast(`${listItems(b).length} éléments rangés ✨`); } }, '✨ Ranger'),
       seg(b.size, SIZE_OPTS, v => set('size', v)),
       seg(b.box, [['square', '☐', 'Cases carrées'], ['round', '◯', 'Ronds']], v => { set('box', v); preview.classList.toggle('round', v === 'round'); }));
@@ -599,6 +600,105 @@ function renderLabelEditor() {
   tipBox = h('div', { class: 'tip' });
   box.append(tipBox);
 }
+
+
+// ---------- Listes avec Claude ----------
+const AI_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5'];
+const AI_SYSTEM = `Tu aides à préparer une liste à cocher qui sera imprimée sur un petit ticket.
+L'utilisateur réfléchit à voix haute (texte dicté, avec hésitations, digressions, retours en arrière).
+- Garde uniquement les éléments concrets à faire, acheter, préparer ou emporter.
+- Ignore les réflexions, commentaires, hésitations et tout ce qui a été écarté (« non finalement pas de… », « laisse tomber… »).
+- Applique les corrections dites en cours de route (« plutôt 2 que 3 », « pas le rouge, le bleu »).
+- Formule chaque élément en 2 à 7 mots, en français, majuscule initiale, sans point final ; garde les quantités utiles.
+- Fusionne les doublons ; regroupe dans un ordre logique (par rayon, par pièce, par moment) si ça aide.
+- Propose un titre court (1 à 4 mots) si le sujet est clair, sinon une chaîne vide.
+Réponds UNIQUEMENT avec du JSON valide : {"title": "...", "items": ["...", "..."]}`;
+function apiKey() { try { return localStorage.getItem('zebra-claude-key') || ''; } catch (_) { return ''; } }
+async function askClaude(messages) {
+  const key = apiKey();
+  if (!key) throw new Error('Ajoute ta clé API Claude dans les réglages ⚙︎');
+  let lastErr;
+  for (const model of AI_MODELS) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model, max_tokens: 1500, system: AI_SYSTEM, messages }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('réponse inattendue de Claude');
+      const out = JSON.parse(m[0]);
+      log(`Claude (${model}) : ${out.items ? out.items.length : 0} éléments.`);
+      return { title: String(out.title || ''), items: (out.items || []).map(String).filter(Boolean), raw: text };
+    }
+    const msg = (data.error && data.error.message) || ('erreur ' + r.status);
+    lastErr = new Error(r.status === 401 ? 'clé API refusée, vérifie-la dans les réglages' : msg);
+    if (r.status !== 404 && !/model/i.test(msg)) break; // on n'essaie le modèle suivant que si le modèle est inconnu
+  }
+  throw lastErr;
+}
+function openAI(block) {
+  const sheet = $('aiSheet'); sheet.innerHTML = '';
+  const convo = []; let current = null;
+  sheet.append(h('h3', {}, '🎙️ Ta liste avec Claude'));
+  if (!apiKey()) {
+    sheet.append(h('p', { class: 'hint', style: 'font-size:15px;color:var(--ink)' },
+      'Il faut d\'abord une clé API Claude. Crée-la sur console.anthropic.com (rubrique API Keys), puis colle-la ici. Elle reste enregistrée sur cet iPad uniquement.'));
+    const k = h('input', { type: 'password', placeholder: 'sk-ant-…', style: 'width:100%;border:0;background:var(--bg);border-radius:12px;padding:12px;font-size:16px;outline:0' });
+    sheet.append(k, h('button', { class: 'go', style: 'margin-top:12px', onclick: () => {
+      const v = k.value.trim(); if (!v) return; try { localStorage.setItem('zebra-claude-key', v); } catch (_) {}
+      toast('Clé enregistrée sur cet iPad 🔑'); openAI(block);
+    } }, 'Enregistrer la clé'));
+    $('aiBg').classList.add('open'); return;
+  }
+  const ta = h('textarea', { placeholder: 'Réfléchis à voix haute : touche le micro 🎤 du clavier et parle librement. Claude ne gardera que ce qui doit aller dans la liste.' });
+  if (block.items && block.items.trim()) ta.value = block.items;
+  const go = h('button', { class: 'go' }, '✨ Faire la liste');
+  const result = h('div');
+  const render = () => {
+    result.innerHTML = '';
+    if (!current) return;
+    const ul = h('ul', { class: 'checks' }); current.items.forEach(t => ul.append(h('li', {}, t)));
+    const fix = h('input', { placeholder: 'Une correction ? « enlève le pain », « ajoute du sel »…' });
+    const fixBtn = h('button', {}, 'Ajuster');
+    const doFix = async () => {
+      const v = fix.value.trim(); if (!v) return;
+      fixBtn.disabled = true; fixBtn.innerHTML = '<span class="thinking">…</span>';
+      try { convo.push({ role: 'user', content: v }); const r = await askClaude(convo); convo.push({ role: 'assistant', content: r.raw }); current = r; render(); }
+      catch (e) { convo.pop(); toast(e.message || String(e), true); fixBtn.disabled = false; fixBtn.textContent = 'Ajuster'; }
+    };
+    fixBtn.onclick = doFix; fix.addEventListener('keydown', e => { if (e.key === 'Enter') doFix(); });
+    result.append(h('div', { class: 'result' }, current.title ? h('h4', {}, current.title) : null, ul,
+      h('div', { class: 'row2' }, fix, fixBtn)),
+      h('button', { class: 'use', onclick: () => {
+        block.title = current.title || block.title; block.items = current.items.join('\n');
+        $('aiBg').classList.remove('open'); selectedId = block.id; renderBlocks(); changed(); toast(`Liste prête : ${current.items.length} éléments ✓`);
+      } }, `Utiliser cette liste (${current.items.length})`));
+  };
+  go.onclick = async () => {
+    const v = ta.value.trim(); if (!v) { ta.focus(); return; }
+    go.disabled = true; go.innerHTML = '<span class="thinking">Claude réfléchit…</span>';
+    try {
+      convo.length = 0; convo.push({ role: 'user', content: v });
+      const r = await askClaude(convo); convo.push({ role: 'assistant', content: r.raw }); current = r; render();
+      go.textContent = '↻ Refaire depuis le texte';
+    } catch (e) { toast(e.message || String(e), true); go.textContent = '✨ Faire la liste'; }
+    finally { go.disabled = false; }
+  };
+  sheet.append(ta, h('p', { class: 'hint' }, 'Tu peux te contredire, hésiter, digresser : seuls les vrais éléments restent.'), go, result);
+  $('aiBg').classList.add('open');
+  setTimeout(() => ta.focus(), 150);
+}
+$('aiBg').addEventListener('click', e => { if (e.target === $('aiBg')) $('aiBg').classList.remove('open'); });
+$('btnSaveKey').onclick = () => {
+  const v = $('apiKey').value.trim();
+  try { if (v) localStorage.setItem('zebra-claude-key', v); else localStorage.removeItem('zebra-claude-key'); } catch (_) {}
+  $('apiKey').value = ''; $('apiKey').placeholder = v ? 'Clé enregistrée ✓' : 'sk-ant-…';
+  toast(v ? 'Clé enregistrée sur cet iPad 🔑' : 'Clé supprimée');
+};
+if (apiKey()) $('apiKey').placeholder = 'Clé enregistrée ✓';
 
 // ---------- Réglages globaux ----------
 function syncTop() {
