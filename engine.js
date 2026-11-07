@@ -244,7 +244,8 @@ function ditherInto(img, targetW, b) {
       if (yy + 1 < h) { if (xx > 0) g[i + w - 1] += err * 3 / 16; g[i + w] += err * 5 / 16; if (xx + 1 < w) g[i + w + 1] += err / 16; }
     }
   } else {
-    for (let i = 0; i < w * h; i++) g[i] = g[i] < 150 ? 0 : 255;
+    const cut = b.render === 'ink' ? 215 : 150; // dessin : on garde les traits fins
+    for (let i = 0; i < w * h; i++) g[i] = g[i] < cut ? 0 : 255;
   }
   for (let i = 0; i < w * h; i++) { const v = g[i] < 128 ? 0 : 255; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
   x.putImageData(id, 0, 0);

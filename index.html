@@ -173,6 +173,24 @@
   .fmt-chip i { display:block; border:2px solid currentColor; border-radius:4px; }
   .numf { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--mute); font-weight:600; }
   .numf input { width:64px; border:0; background:var(--bg); border-radius:10px; padding:8px; font-size:16px; font-weight:700; text-align:center; color:var(--ink); }
+  .draw-icon { width:40px; height:40px; border:2px dashed var(--line); background:var(--bg); border-radius:12px; font-size:18px; padding:0; }
+  .draw-icon.on { border:2px solid var(--pink); }
+  .draw-icon canvas { width:30px; height:30px; display:block; margin:auto; }
+  /* ---------- Dessin ---------- */
+  .draw-bg { position:fixed; inset:0; z-index:80; background:var(--bg); display:flex; flex-direction:column; }
+  .draw-top { display:flex; align-items:center; justify-content:space-between; padding:calc(12px + env(safe-area-inset-top)) 16px 8px; }
+  .draw-top b { font-family:var(--display); font-size:20px; }
+  .dbtn { border:0; background:var(--card); box-shadow:var(--shadow); border-radius:12px; padding:10px 16px; font-weight:700; }
+  .dbtn.primary { background:linear-gradient(120deg, var(--pink), var(--orange)); color:#fff; }
+  .draw-tools { display:flex; gap:6px; overflow-x:auto; padding:6px 16px 10px; scrollbar-width:none; }
+  .dtool { flex:none; display:flex; flex-direction:column; align-items:center; gap:2px; border:2px solid transparent; background:var(--card); border-radius:12px; padding:6px 10px; font-size:11px; font-weight:700; min-width:62px; }
+  .dtool span { font-size:20px; line-height:1.1; }
+  .dtool.on { border-color:var(--pink); }
+  .dsep { width:1px; background:var(--line); margin:4px 4px; flex:none; }
+  .draw-stage { flex:1; overflow:auto; display:flex; justify-content:center; padding:10px 16px 20px; }
+  .draw-paper { background:#fff; box-shadow:0 10px 30px rgba(0,0,0,.18); border-radius:6px; align-self:flex-start; }
+  .draw-paper canvas { display:block; touch-action:none; cursor:crosshair; }
+  .draw-hint { text-align:center; color:var(--mute); font-size:13px; padding:0 16px calc(12px + env(safe-area-inset-bottom)); }
   /* ---------- Claude ---------- */
   .ai-btn { border:0; border-radius:12px; height:40px; padding:0 14px; font-weight:700; color:#fff; background:linear-gradient(120deg, #D97757, var(--pink)); }
   #aiSheet textarea { width:100%; min-height:150px; border:0; outline:0; background:var(--bg); border-radius:16px; padding:14px; font-size:17px; line-height:1.45; resize:vertical; }
@@ -190,7 +208,7 @@
 
   /* ---------- Ajout ---------- */
   .adds { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:18px; }
-  @media (min-width:1000px) { .adds { grid-template-columns:repeat(6, 1fr); } }
+  @media (min-width:1000px) { .adds { grid-template-columns:repeat(4, 1fr); } }
   .block[data-type=list] { --c:var(--orange); }
   .block .title { width:100%; border:0; outline:0; background:transparent; font-family:var(--display); font-weight:800; font-size:22px; padding:0 0 6px; }
   .block .title::placeholder { color:var(--mute); font-weight:700; }
@@ -294,6 +312,7 @@
       <button class="add" data-add="file"><i style="--c:var(--pink)">＋</i>Photo / fichier</button>
       <button class="add" data-add="qr"><i style="--c:var(--blue)">▦</i>QR code</button>
       <button class="add" data-add="sep"><i style="--c:var(--yellow)">✂︎</i>Trait</button>
+      <button class="add" data-add="draw"><i style="--c:#111;font-size:20px">✏️</i>Dessin</button>
       <button class="add" data-add="space"><i style="--c:var(--mint)">↕</i>Espace</button>
     </div>
     <p class="hint-move">Astuce : appui long sur un bloc pour le déplacer</p>
@@ -348,8 +367,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070340"></script>
-<script src="label.js?v=202611070340"></script>
-<script src="app.js?v=202611070340"></script>
+<script src="engine.js?v=202611070345"></script>
+<script src="draw.js?v=202611070345"></script>
+<script src="label.js?v=202611070345"></script>
+<script src="app.js?v=202611070345"></script>
 </body>
 </html>

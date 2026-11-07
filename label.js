@@ -23,6 +23,18 @@ function defaultLabel() {
            title: t.ex.title, subtitle: t.ex.subtitle, detail: t.ex.detail, qr: '' };
 }
 
+// Dessin utilisé comme icône : rogné sur ses traits, chargé une fois
+const labelDrawCache = { src: null, img: null };
+function labelDrawImage(L) {
+  if (!L.drawing) return null;
+  if (labelDrawCache.src === L.drawing) return labelDrawCache.img;
+  labelDrawCache.src = L.drawing; labelDrawCache.img = null;
+  const im = new Image();
+  im.onload = () => { if (labelDrawCache.src === L.drawing) { labelDrawCache.img = trimWhite(im); if (typeof changed === 'function') changed(); if (typeof renderLabelEditor === 'function' && state.mode === 'dymo') renderLabelEditor(); } };
+  im.src = L.drawing;
+  return null;
+}
+
 // ---------- Cadres ----------
 function drawFrame(ctx, style, W, H) {
   const i = DYMO_INSET;
@@ -64,7 +76,8 @@ function stackFor(ctx, T, L, s, Wt, family) {
   const sub = Math.max(17, Math.round(s * 0.42)), det = Math.max(15, Math.round(s * 0.3));
   const gap = Math.round(Math.max(6, s * 0.16));
   const items = [];
-  if (L.icon) items.push({ kind: 'icon', h: Math.round(s * 1.05), size: Math.round(s * 0.95) });
+  if (L.icon === 'draw' && L.drawing) items.push({ kind: 'drawing', h: Math.round(s * 1.6) });
+  else if (L.icon && L.icon !== 'draw') items.push({ kind: 'icon', h: Math.round(s * 1.05), size: Math.round(s * 0.95) });
   if (T.title) items.push({ kind: 'title', size: s, h: layoutRich(ctx, parseInline(T.title), 0, Wt, 0, s, family, L.align, false, true) });
   if (T.subtitle) items.push({ kind: 'subtitle', size: sub, h: layoutRich(ctx, parseInline(T.subtitle), 0, Wt, 0, sub, family, L.align, false) });
   if (T.detail) items.push({ kind: 'detail', size: det, h: layoutRich(ctx, parseInline(T.detail), 0, Wt, 0, det, family, L.align, false) });
@@ -121,7 +134,15 @@ function composeLabel(L, opts) {
   const st = fit.st;
   let y = Math.round(ay + (ah - st.total) / 2);
   for (const it of st.items) {
-    if (it.kind === 'icon') {
+    if (it.kind === 'drawing') {
+      const im = labelDrawImage(L);
+      if (im) {
+        const r = Math.min(aw / im.width, it.h / im.height);
+        const dw = im.width * r, dh = im.height * r;
+        const dx = L.align === 'left' ? ax : ax + (aw - dw) / 2;
+        ctx.drawImage(im, dx, y + (it.h - dh) / 2, dw, dh);
+      }
+    } else if (it.kind === 'icon') {
       ctx.font = `${it.size}px ${family}`; ctx.fillStyle = '#000'; ctx.textBaseline = 'alphabetic';
       const glyph = L.icon + '︎', gw = ctx.measureText(glyph).width;
       const gx = L.align === 'left' ? ax : ax + (aw - gw) / 2;

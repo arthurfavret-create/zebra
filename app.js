@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070340';
+const APP_VERSION = '202611070345';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -216,12 +216,14 @@ function card(b) {
     };
     drawThumb();
     let t; const setThumb = (k, v) => { b[k] = v; changed(); clearTimeout(t); t = setTimeout(drawThumb, 120); };
+    const isDraw = b.kind === 'draw';
+    if (isDraw) more.append(h('button', { class: 'magic', onclick: e => { e.stopPropagation(); editDrawing(b); } }, '✏️ Modifier le dessin'));
     more.append(
-      seg(b.render, [['photo', 'Photo'], ['net', 'Net']], v => setThumb('render', v)),
-      h('label', { class: 'slider', title: 'Luminosité' }, '☾', h('input', { type: 'range', min: -60, max: 60, value: b.bright, oninput: e => setThumb('bright', +e.target.value) }), '☀︎'),
+      isDraw ? null : seg(b.render, [['photo', 'Photo'], ['net', 'Net']], v => setThumb('render', v)),
+      isDraw ? null : h('label', { class: 'slider', title: 'Luminosité' }, '☾', h('input', { type: 'range', min: -60, max: 60, value: b.bright, oninput: e => setThumb('bright', +e.target.value) }), '☀︎'),
       h('label', { class: 'slider', title: 'Taille' }, '▫︎', h('input', { type: 'range', min: 30, max: 100, step: 5, value: b.width, oninput: e => setThumb('width', +e.target.value) }), '◻︎'),
-      h('button', { class: 'seg', style: 'border:0;padding:0 14px;height:40px;font-weight:700', onclick: e => { e.stopPropagation(); replaceImage(b); } }, 'Remplacer'),
-      (() => { const t = h('button', { class: 'toggle' + (b.trim ? ' on' : ''), onclick: e => { e.stopPropagation(); t.classList.toggle('on'); setThumb('trim', t.classList.contains('on')); } }, h('i'), 'Rogner le blanc'); return t; })(),
+      isDraw ? null : h('button', { class: 'seg', style: 'border:0;padding:0 14px;height:40px;font-weight:700', onclick: e => { e.stopPropagation(); replaceImage(b); } }, 'Remplacer'),
+      isDraw ? null : (() => { const t = h('button', { class: 'toggle' + (b.trim ? ' on' : ''), onclick: e => { e.stopPropagation(); t.classList.toggle('on'); setThumb('trim', t.classList.contains('on')); } }, h('i'), 'Rogner le blanc'); return t; })(),
       (() => {
         const gap = b.gap != null ? b.gap : 14;
         const lab = h('span', { style: 'font-size:13px;color:var(--mute);min-width:84px' }, gap ? `Espace ${(gap / 8).toFixed(1).replace('.', ',')} mm` : 'Collé (frise)');
@@ -911,6 +913,9 @@ function renderLabelEditor() {
     const b = h('button', { class: L.icon === ic ? 'on' : '', onclick: () => { icons.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); set('icon', ic); } }, ic ? ic + '︎' : '∅');
     icons.append(b);
   });
+  const di = h('button', { class: 'draw-icon' + (L.icon === 'draw' ? ' on' : ''), title: 'Dessiner ton icône', onclick: drawLabelIcon }, '✏️');
+  if (L.icon === 'draw' && labelDrawCache.img) { di.textContent = ''; const c = document.createElement('canvas'); c.width = 36; c.height = 36; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 36, 36); const im = labelDrawCache.img, r = Math.min(36 / im.width, 36 / im.height); x.drawImage(im, (36 - im.width * r) / 2, (36 - im.height * r) / 2, im.width * r, im.height * r); di.append(c); }
+  icons.append(di);
   const orient = h('div', { class: 'orient' });
   [['land', 'Couchée', 'width:26px;height:14px'], ['port', 'Debout', 'width:14px;height:24px']].forEach(([v, lab, st]) => {
     const b = h('button', { class: L.orient === v ? 'on' : '', onclick: () => { orient.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); set('orient', v); } }, h('i', { style: st }), lab);
@@ -1035,6 +1040,29 @@ function renderPrepBanner() {
   }
 }
 
+// ---------- Dessin ----------
+async function newDrawing() {
+  const g = contentGeometry();
+  const r = await openDrawing({ width: g.W, height: state.mode === 'dymo' ? Math.min(g.pageH, 420) : 320, title: 'Nouveau dessin' });
+  if (!r || !r.src) return;
+  addBlock('image', { src: r.src, render: 'ink', kind: 'draw', strokes: r.strokes, drawH: r.height, width: 100, gap: 14 });
+  toast('Dessin ajouté ✏️');
+}
+async function editDrawing(b) {
+  const g = contentGeometry();
+  const r = await openDrawing({ width: g.W, height: b.drawH || 320, strokes: b.strokes || [], title: 'Modifier le dessin' });
+  if (!r) return;
+  if (!r.src) { remove(b); return; }
+  Object.assign(b, { src: r.src, strokes: r.strokes, drawH: r.height }); renderBlocks(); changed();
+}
+async function drawLabelIcon() {
+  const L = state.label;
+  const r = await openDrawing({ width: 120, height: 120, fixedHeight: true, strokes: L.drawStrokes || [], title: 'Ton icône' });
+  if (!r) return;
+  Object.assign(L, r.src ? { icon: 'draw', drawing: r.src, drawStrokes: r.strokes } : { icon: '', drawing: '', drawStrokes: [] });
+  renderLabelEditor(); changed();
+}
+
 // ---------- Réglages globaux ----------
 function syncTop() {
   document.querySelectorAll('.mode').forEach(m => m.classList.toggle('active', m.dataset.mode === state.mode));
@@ -1067,6 +1095,7 @@ $('cVal').addEventListener('focus', e => setTimeout(() => e.target.select(), 0))
 document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
   const t = b.dataset.add;
   if (t === 'file') { $('filePick').value = ''; $('filePick').click(); }
+  else if (t === 'draw') newDrawing();
   else addBlock(t, {}, t === 'text' || t === 'list' || t === 'qr');
 });
 
