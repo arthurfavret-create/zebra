@@ -19,7 +19,9 @@ function openDrawing(opts) {
     const k = opts.strokesWidth && opts.strokesWidth !== opts.width ? opts.width / opts.strokesWidth : 1;
     if (k !== 1) H = Math.round(H * k);
     let strokes = (opts.strokes || []).map(s => ({ tool: s.tool, w: s.w, i: s.i, pts: s.pts.map(p => [Math.round(p[0] * k), Math.round(p[1] * k), p[2]]) }));
-    const redo = [];
+    const undoStack = [], redo = [];
+    const commit = () => { undoStack.push(strokes.slice()); if (undoStack.length > 200) undoStack.shift(); redo.length = 0; };
+    let eraseSize = 30, eraseMode = 'area'; // gomme : épaisseur, ou trait entier
     let tool = 'feutre', penSeen = false, handMode = true, intensity = 1; // le doigt fait défiler par défaut
     const active = new Map();   // traits en cours, un par pointeur (stylet, doigt…)
     let scroller = null;        // défilement au doigt
@@ -42,10 +44,37 @@ function openDrawing(opts) {
         <button class="dtool" data-act="clear"><span>🗑</span>Effacer</button>
         ${opts.fixedHeight ? '' : `<span class="dsep"></span><button class="dtool" data-act="shorter"><span>−</span>Raccourcir</button><button class="dtool" data-act="taller"><span>+</span>Allonger</button>`}
       </div>
-      <div class="draw-stage"><div class="draw-paper"><canvas></canvas></div></div>
+      <div class="draw-sub" style="display:none">
+        <span class="dlab">Gomme</span>
+        <button class="dchip" data-esize="14">Petite</button><button class="dchip on" data-esize="30">Moyenne</button><button class="dchip" data-esize="60">Grande</button>
+        <button class="dchip" data-emode="stroke">Trait entier</button>
+      </div>
+      <div class="draw-stage"><div class="draw-paper"><canvas></canvas><div class="draw-cursor"></div></div></div>
       <div class="draw-hint">Le stylet dessine, le doigt fait défiler (touche « Doigt » pour dessiner au doigt). Les gris sont imprimés en fine trame de points.</div>`;
     document.body.append(bg);
     const cv = bg.querySelector('canvas'), ctx = cv.getContext('2d');
+    const cursor = bg.querySelector('.draw-cursor'), sub = bg.querySelector('.draw-sub');
+    function showCursor(e) {
+      if (!DRAW_TOOLS[tool].erase || (e && e.pointerType === 'touch' && handMode)) { cursor.style.display = 'none'; return; }
+      const r = cv.getBoundingClientRect(), k = r.width / W, d = Math.max(10, eraseSize * k);
+      cursor.style.display = 'block';
+      cursor.style.width = cursor.style.height = d + 'px';
+      cursor.style.left = (e.clientX - r.left - d / 2) + 'px'; cursor.style.top = (e.clientY - r.top - d / 2) + 'px';
+      cursor.classList.toggle('whole', eraseMode === 'stroke');
+    }
+    cv.addEventListener('pointerleave', () => { cursor.style.display = 'none'; });
+    // gomme « trait entier » : supprime les traits touchés
+    function hitStrokes(p) {
+      const rr = eraseSize / 2; let removed = false;
+      strokes = strokes.filter(s => {
+        if (DRAW_TOOLS[s.tool].erase) return true;
+        const lim = rr + s.w / 2;
+        const hit = s.pts.some(q => (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 <= lim * lim);
+        if (hit) removed = true;
+        return !hit;
+      });
+      if (removed) redraw();
+    }
     const stage = bg.querySelector('.draw-stage');
 
     function size() {
@@ -106,16 +135,21 @@ function openDrawing(opts) {
       if (isPalm(e)) return;
       try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       const t = DRAW_TOOLS[tool];
-      const s = { tool, w: t.w, i: t.erase ? 1 : intensity, pts: [pos(e)], touch: e.pointerType === 'touch', t0: performance.now() };
+      commit();
+      showCursor(e);
+      if (t.erase && eraseMode === 'stroke') { active.set(e.pointerId, { wholeEraser: true }); hitStrokes(pos(e)); return; }
+      const s = { tool, w: t.erase ? eraseSize : t.w, i: t.erase ? 1 : intensity, pts: [pos(e)], touch: e.pointerType === 'touch', t0: performance.now() };
       active.set(e.pointerId, s);
-      strokes.push(s); redo.length = 0;
+      strokes.push(s);
       strokePath(s);
       ctx.globalCompositeOperation = 'source-over';
     });
     cv.addEventListener('pointermove', e => {
       if (scroller && e.pointerId === scroller.id) { e.preventDefault(); stage.scrollTop = scroller.top - (e.clientY - scroller.y); return; }
+      showCursor(e); // y compris au survol du stylet, sans toucher l'écran
       const s = active.get(e.pointerId); if (!s) return;
       e.preventDefault();
+      if (s.wholeEraser) { hitStrokes(pos(e)); return; }
       let evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
       if (!evs || !evs.length) evs = [e];
       const from = s.pts.length;
@@ -135,15 +169,18 @@ function openDrawing(opts) {
 
     bg.addEventListener('click', e => {
       const ib = e.target.closest('[data-int]');
-      if (ib) { intensity = +ib.dataset.int; bg.querySelectorAll('[data-int]').forEach(b => b.classList.toggle('on', b === ib)); if (DRAW_TOOLS[tool].erase) { tool = 'feutre'; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === 'feutre')); } return; }
+      if (ib) { intensity = +ib.dataset.int; bg.querySelectorAll('[data-int]').forEach(b => b.classList.toggle('on', b === ib)); if (DRAW_TOOLS[tool].erase) { tool = 'feutre'; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === 'feutre')); sub.style.display = 'none'; cursor.style.display = 'none'; } return; }
       const tb = e.target.closest('[data-tool]');
-      if (tb) { tool = tb.dataset.tool; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b === tb)); return; }
+      if (tb) { tool = tb.dataset.tool; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b === tb)); sub.style.display = DRAW_TOOLS[tool].erase ? '' : 'none'; cursor.style.display = 'none'; return; }
+      const es = e.target.closest('[data-esize]'), em = e.target.closest('[data-emode]');
+      if (es) { eraseSize = +es.dataset.esize; eraseMode = 'area'; sub.querySelectorAll('.dchip').forEach(b => b.classList.toggle('on', b === es)); return; }
+      if (em) { eraseMode = 'stroke'; sub.querySelectorAll('.dchip').forEach(b => b.classList.toggle('on', b === em)); return; }
       const act = (e.target.closest('[data-act]') || {}).dataset; if (!act) return;
       switch (act.act) {
         case 'hand': { handMode = !handMode; const hb = e.target.closest('[data-act]'); hb.classList.toggle('on', handMode); hb.lastChild.textContent = handMode ? 'Doigt : défile' : 'Doigt : dessine'; break; }
-        case 'undo': if (strokes.length) { redo.push(strokes.pop()); redraw(); } break;
-        case 'redo': if (redo.length) { strokes.push(redo.pop()); redraw(); } break;
-        case 'clear': if (strokes.length) { redo.push(...strokes.reverse()); strokes = []; redraw(); } break;
+        case 'undo': if (undoStack.length) { redo.push(strokes); strokes = undoStack.pop(); redraw(); } break;
+        case 'redo': if (redo.length) { undoStack.push(strokes); strokes = redo.pop(); redraw(); } break;
+        case 'clear': if (strokes.length) { commit(); strokes = []; redraw(); } break;
         case 'taller': H = Math.min(H + 200 * DRAW_SCALE, 4000 * DRAW_SCALE); size(); break;
         case 'shorter': {
           const maxY = strokes.reduce((m, s) => Math.max(m, ...s.pts.map(p => p[1])), 0);

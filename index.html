@@ -191,7 +191,13 @@
   .dint i { display:block; width:20px; height:20px; border-radius:50%; border:2px solid var(--line); margin:1px 0 2px; }
   .dsep { width:1px; background:var(--line); margin:4px 2px; flex:none; align-self:stretch; }
   .draw-stage { flex:1; overflow:auto; display:flex; justify-content:center; padding:10px 16px 20px; }
-  .draw-paper { background:#fff; box-shadow:0 10px 30px rgba(0,0,0,.18); border-radius:6px; align-self:flex-start; }
+  .draw-sub { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; padding:0 16px 10px; }
+  .dlab { font-size:12px; font-weight:700; color:var(--mute); margin-right:4px; }
+  .dchip { border:2px solid transparent; background:var(--card); border-radius:10px; padding:7px 12px; font-weight:700; font-size:13px; }
+  .dchip.on { border-color:var(--pink); }
+  .draw-cursor { position:absolute; display:none; border:2px solid #FF4F8B; border-radius:50%; background:rgba(255,79,139,.12); pointer-events:none; box-sizing:border-box; }
+  .draw-cursor.whole { border-style:dashed; }
+  .draw-paper { position:relative; background:#fff; box-shadow:0 10px 30px rgba(0,0,0,.18); border-radius:6px; align-self:flex-start; }
   .draw-paper canvas { display:block; touch-action:none; cursor:crosshair; }
   .draw-hint { text-align:center; color:var(--mute); font-size:13px; padding:0 16px calc(12px + env(safe-area-inset-bottom)); }
   /* ---------- Claude ---------- */
@@ -370,9 +376,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070421"></script>
-<script src="draw.js?v=202611070421"></script>
-<script src="label.js?v=202611070421"></script>
-<script src="app.js?v=202611070421"></script>
+<script src="engine.js?v=202611070423"></script>
+<script src="draw.js?v=202611070423"></script>
+<script src="label.js?v=202611070423"></script>
+<script src="app.js?v=202611070423"></script>
 </body>
 </html>
