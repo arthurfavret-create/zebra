@@ -3,10 +3,11 @@
 
 const DRAW_SCALE = 2;           // on dessine en 2× pour des traits lisses, réduits à l'impression
 const DRAW_TOOLS = {
-  fin:      { label: 'Fin',      w: 3,  icon: '✎' },
+  fin:      { label: 'Fin',      w: 3,  icon: '✎', hidden: true }, // retiré de la barre, gardé pour les anciens dessins
   feutre:   { label: 'Feutre',   w: 7,  icon: '🖊' },
   marqueur: { label: 'Marqueur', w: 16, icon: '🖍' },
-  gomme:    { label: 'Gomme',    w: 26, icon: '⌫', erase: true },
+  gros:     { label: 'Gros',     w: 34, icon: '⬤' },
+  gomme:    { label: 'Gomme',    w: 30, icon: '⌫', erase: true },
 };
 
 // Ouvre la feuille de dessin. opts : { width (points d'impression), height, strokes, fixedHeight, title }
@@ -31,7 +32,7 @@ function openDrawing(opts) {
         <button class="dbtn primary" data-act="done">Terminé</button>
       </div>
       <div class="draw-tools">
-        ${Object.entries(DRAW_TOOLS).map(([k, t]) => `<button class="dtool${k === tool ? ' on' : ''}" data-tool="${k}"><span>${t.icon}</span>${t.label}</button>`).join('')}
+        ${Object.entries(DRAW_TOOLS).filter(([, t]) => !t.hidden).map(([k, t]) => `<button class="dtool${k === tool ? ' on' : ''}" data-tool="${k}"><span>${t.icon}</span>${t.label}</button>`).join('')}
         <span class="dsep"></span>
         ${[1, 0.7, 0.45, 0.25].map(v => `<button class="dtool dint${v === 1 ? ' on' : ''}" data-int="${v}"><i style="background:rgb(${Math.round(255 * (1 - v))},${Math.round(255 * (1 - v))},${Math.round(255 * (1 - v))})"></i>${Math.round(v * 100)} %</button>`).join('')}
         <span class="dsep"></span>

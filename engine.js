@@ -43,14 +43,17 @@ const SIZES = { S: 20, M: 25, L: 31, XL: 40 };
 
 // ---------- Rendu : texte Markdown ----------
 function parseInline(s) {
-  // **gras**, *italique* / _italique_, `code`
+  // **gras**, *italique* / _italique_, `code`, ==surligné==, ++souligné++, ~~atténué (70 %)~~
   const runs = [];
-  const re = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g;
+  const re = /(==[^=]+==|\+\+[^+]+\+\+|~~[^~]+~~|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|`[^`]+`)/g;
   let last = 0, m;
   while ((m = re.exec(s))) {
     if (m.index > last) runs.push({ t: s.slice(last, m.index) });
     const tok = m[0];
-    if (tok.startsWith('**') || tok.startsWith('__')) runs.push({ t: tok.slice(2, -2), b: true });
+    if (tok.startsWith('==')) runs.push(...parseInline(tok.slice(2, -2)).map(r => Object.assign(r, { hl: true })));
+    else if (tok.startsWith('++')) runs.push(...parseInline(tok.slice(2, -2)).map(r => Object.assign(r, { ul: true })));
+    else if (tok.startsWith('~~')) runs.push(...parseInline(tok.slice(2, -2)).map(r => Object.assign(r, { tone: true })));
+    else if (tok.startsWith('**') || tok.startsWith('__')) runs.push({ t: tok.slice(2, -2), b: true });
     else if (tok.startsWith('`')) runs.push({ t: tok.slice(1, -1), mono: true });
     else runs.push({ t: tok.slice(1, -1), i: true });
     last = m.index + tok.length;
@@ -102,7 +105,17 @@ function layoutRich(ctx, runs, x, width, y, size, family, align, draw, forceBold
       const lw = ln.reduce((a, w) => a + w.w, 0);
       let cx = x + (align === 'center' ? (width - lw) / 2 : align === 'right' ? width - lw : 0);
       const by = y + i * lineH + Math.round(size * 0.95);
-      ln.forEach(w => { ctx.font = fontFor(w.r, size, family, forceBold); if (!w.space) ctx.fillText(w.t, cx, by); cx += w.w; });
+      // surlignage d'abord (sous le texte), puis le texte, puis le soulignement
+      let hx = cx;
+      ln.forEach(w => { if (w.r.hl) { ctx.fillStyle = HL_COLOR; ctx.fillRect(Math.floor(hx), by - Math.round(size * 0.92), Math.ceil(w.w) + 1, Math.round(size * 1.18)); } hx += w.w; });
+      ln.forEach(w => {
+        ctx.font = fontFor(w.r, size, family, forceBold);
+        ctx.fillStyle = w.r.tone ? TONE_COLOR : '#000';
+        if (!w.space) ctx.fillText(w.t, cx, by);
+        if (w.r.ul) ctx.fillRect(Math.floor(cx), by + Math.max(2, Math.round(size * 0.1)), Math.ceil(w.w) + (w.space ? 1 : 0), Math.max(2, Math.round(size * 0.07)));
+        cx += w.w;
+      });
+      ctx.fillStyle = '#000';
     });
   }
   return lines.length * lineH;
@@ -113,6 +126,11 @@ function fillVars(s) {
           .replace(/\{heure\}/gi, d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
 }
 function renderTextBlock(ctx, b, W, draw) {
+  if (b.tone && !b._toned) { // texte entier atténué : on applique « tone » à tous les morceaux
+    const pi = parseInline;
+    parseInline = s => pi(s).map(r => Object.assign(r, { tone: true }));
+    try { return renderTextBlock(ctx, Object.assign({}, b, { tone: false, _toned: true }), W, draw); } finally { parseInline = pi; }
+  }
   const family = FONTS[b.font || state.font].css;
   const base = SIZES[b.size] || SIZES.M;
   const lines = fillVars(b.text || '').replace(/\r/g, '').split('\n');
@@ -374,8 +392,23 @@ async function composeStrip(W) {
     ctx.restore();
     y += p.h + gapOf(p);
   }
-  threshold(strip);
+  toneThreshold(strip);
   return strip;
+}
+// Couleurs « codées » : rouge = texte atténué à 70 %, bleu = surlignage à 25 %. Converties en trames à l'impression.
+const TONE_COLOR = '#ff0000', HL_COLOR = '#0000ff';
+function toneThreshold(c) {
+  const x = c.getContext('2d', { willReadFrequently: true });
+  const id = x.getImageData(0, 0, c.width, c.height), d = id.data, w = c.width;
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    let v;
+    if (r > 180 && g < 110 && b < 110) { const xx = p % w, yy = (p / w) | 0; v = BAYER8[(yy & 7) * 8 + (xx & 7)] < 45 ? 0 : 255; }      // 70 %
+    else if (b > 180 && r < 110 && g < 110) { const xx = p % w, yy = (p / w) | 0; v = BAYER8[(yy & 7) * 8 + (xx & 7)] < 16 ? 0 : 255; } // 25 %
+    else v = (0.299 * r + 0.587 * g + 0.114 * b) < 150 ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+  }
+  x.putImageData(id, 0, 0);
 }
 function threshold(c) {
   const x = c.getContext('2d', { willReadFrequently: true });

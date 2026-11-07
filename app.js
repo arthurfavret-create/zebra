@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070403';
+const APP_VERSION = '202611070411';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -177,6 +177,11 @@ function card(b) {
         h('button', { title: 'Titre', onclick: e => { e.stopPropagation(); prefix('# '); } }, 'H'),
         h('button', { title: 'Puce', onclick: e => { e.stopPropagation(); prefix('- '); } }, '•'),
         h('button', { title: 'Case à cocher', onclick: e => { e.stopPropagation(); prefix('- [ ] '); } }, '☐')),
+      h('div', { class: 'fmt' },
+        h('button', { title: 'Souligner', style: 'text-decoration:underline', onclick: e => { e.stopPropagation(); wrap('++', '++'); } }, 'U'),
+        h('button', { title: 'Surligner (trame légère)', onclick: e => { e.stopPropagation(); wrap('==', '=='); } }, h('span', { style: 'background:rgba(255,201,60,.6);padding:0 4px;border-radius:3px' }, 'ab')),
+        h('button', { title: 'Atténuer à 70 %', style: 'opacity:.55', onclick: e => { e.stopPropagation(); wrap('~~', '~~'); } }, '◐')),
+      seg(b.tone ? 'soft' : 'full', [['full', '100 %', 'Texte noir'], ['soft', '70 %', 'Tout le bloc atténué']], v => set('tone', v === 'soft')),
       seg(b.size, SIZE_OPTS, v => set('size', v)),
       seg(b.align, [['left', '⇤', 'Gauche'], ['center', '↔', 'Centré'], ['right', '⇥', 'Droite']], v => set('align', v)));
   }
