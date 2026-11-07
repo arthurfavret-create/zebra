@@ -183,9 +183,34 @@ function renderListBlock(ctx, b, W, draw) {
 }
 
 // ---------- Rendu : images (tramage) ----------
+// Rogne les bords blancs d'une image (pages de PDF, captures…) pour pouvoir coller les images en frise
+const trimCache = new WeakMap();
+function trimWhite(img) {
+  if (trimCache.has(img)) return trimCache.get(img);
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, w, h).data;
+  const ink = (px, py) => { const i = (py * w + px) * 4; return d[i] + d[i + 1] + d[i + 2] < 3 * 235; };
+  let top = 0, bot = h - 1, left = 0, right = w - 1;
+  const rowInk = py => { for (let px = 0; px < w; px += 2) if (ink(px, py)) return true; return false; };
+  const colInk = px => { for (let py = top; py <= bot; py += 2) if (ink(px, py)) return true; return false; };
+  while (top < bot && !rowInk(top)) top++;
+  while (bot > top && !rowInk(bot)) bot--;
+  while (left < right && !colInk(left)) left++;
+  while (right > left && !colInk(right)) right--;
+  let out = img;
+  if (bot - top > 4 && right - left > 4 && (top > 0 || left > 0 || bot < h - 1 || right < w - 1)) {
+    out = document.createElement('canvas'); out.width = right - left + 1; out.height = bot - top + 1;
+    out.getContext('2d').drawImage(c, left, top, out.width, out.height, 0, 0, out.width, out.height);
+  }
+  trimCache.set(img, out);
+  return out;
+}
 function ditherInto(img, targetW, b) {
-  const scale = targetW / img.naturalWidth;
-  const w = Math.max(1, Math.round(targetW)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const scale = targetW / iw;
+  const w = Math.max(1, Math.round(targetW)), h = Math.max(1, Math.round(ih * scale));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d', { willReadFrequently: true });
   x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
@@ -278,7 +303,8 @@ async function composeStrip(W) {
     else if (b.type === 'list') { if (!listItems(b).length && !(b.title || '').trim()) continue; parts.push({ b, h: renderListBlock(meas, b, W, false) }); }
     else if (b.type === 'image') {
       const im = await getImage(b); if (!im) continue;
-      const c = ditherInto(im, W * (b.width || 100) / 100, b); parts.push({ b, h: c.height, c });
+      const src = b.trim ? trimWhite(im) : im;
+      const c = ditherInto(src, W * (b.width || 100) / 100, b); parts.push({ b, h: c.height, c });
     }
     else if (b.type === 'qr') {
       const c = qrCanvas(b); if (!c) continue;
@@ -289,14 +315,17 @@ async function composeStrip(W) {
     else if (b.type === 'sep') parts.push({ b, h: drawSep(meas, b.style, W, 0, false) });
     else if (b.type === 'space') parts.push({ b, h: Math.max(4, +b.h || 40) });
   }
-  const total = parts.reduce((a, p) => a + p.h, 0) + Math.max(0, parts.length - 1) * BLOCK_GAP;
+  const gapOf = p => (p.b.type === 'image' && p.b.gap != null ? +p.b.gap : BLOCK_GAP);
+  const total = parts.reduce((a, p, i) => a + p.h + (i < parts.length - 1 ? gapOf(p) : 0), 0);
   const strip = document.createElement('canvas'); strip.width = W; strip.height = Math.max(1, total);
   const ctx = strip.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, strip.height);
   let y = 0;
   strip._bounds = [];
+  let prevGap = 0;
   for (const p of parts) {
     const b = p.b;
-    if (y > 0) strip._bounds.push(y - Math.round(BLOCK_GAP / 2));
+    if (y > 0) strip._bounds.push(y - Math.round(prevGap / 2));
+    prevGap = gapOf(p);
     ctx.save(); ctx.translate(0, y);
     if (b.type === 'text') renderTextBlock(ctx, b, W, true);
     else if (b.type === 'list') renderListBlock(ctx, b, W, true);
@@ -307,7 +336,7 @@ async function composeStrip(W) {
     }
     else if (b.type === 'sep') drawSep(ctx, b.style, W, 0, true);
     ctx.restore();
-    y += p.h + BLOCK_GAP;
+    y += p.h + gapOf(p);
   }
   threshold(strip);
   return strip;

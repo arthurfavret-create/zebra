@@ -184,7 +184,7 @@ function card(b) {
       const im = await getImage(b);
       thumb.innerHTML = '';
       if (!im) { thumb.append(h('span', { style: 'color:var(--mute);padding:30px' }, 'Image illisible')); return; }
-      thumb.append(ditherInto(im, contentGeometry().W * (b.width || 100) / 100, b));
+      thumb.append(ditherInto(b.trim ? trimWhite(im) : im, contentGeometry().W * (b.width || 100) / 100, b));
     };
     drawThumb();
     let t; const setThumb = (k, v) => { b[k] = v; changed(); clearTimeout(t); t = setTimeout(drawThumb, 120); };
@@ -192,7 +192,14 @@ function card(b) {
       seg(b.render, [['photo', 'Photo'], ['net', 'Net']], v => setThumb('render', v)),
       h('label', { class: 'slider', title: 'Luminosité' }, '☾', h('input', { type: 'range', min: -60, max: 60, value: b.bright, oninput: e => setThumb('bright', +e.target.value) }), '☀︎'),
       h('label', { class: 'slider', title: 'Taille' }, '▫︎', h('input', { type: 'range', min: 30, max: 100, step: 5, value: b.width, oninput: e => setThumb('width', +e.target.value) }), '◻︎'),
-      h('button', { class: 'seg', style: 'border:0;padding:0 14px;height:40px;font-weight:700', onclick: e => { e.stopPropagation(); replaceImage(b); } }, 'Remplacer'));
+      h('button', { class: 'seg', style: 'border:0;padding:0 14px;height:40px;font-weight:700', onclick: e => { e.stopPropagation(); replaceImage(b); } }, 'Remplacer'),
+      (() => { const t = h('button', { class: 'toggle' + (b.trim ? ' on' : ''), onclick: e => { e.stopPropagation(); t.classList.toggle('on'); setThumb('trim', t.classList.contains('on')); } }, h('i'), 'Rogner le blanc'); return t; })(),
+      (() => {
+        const gap = b.gap != null ? b.gap : 14;
+        const lab = h('span', { style: 'font-size:13px;color:var(--mute);min-width:84px' }, gap ? `Espace ${(gap / 8).toFixed(1).replace('.', ',')} mm` : 'Collé (frise)');
+        return h('label', { class: 'slider', title: 'Espace sous l\'image' }, '⇣',
+          h('input', { type: 'range', min: 0, max: 80, step: 2, value: gap, oninput: e => { const v = +e.target.value; lab.textContent = v ? `Espace ${(v / 8).toFixed(1).replace('.', ',')} mm` : 'Collé (frise)'; set('gap', v); } }), lab);
+      })());
   }
 
   else if (b.type === 'qr') {
@@ -330,8 +337,8 @@ function tidyList(text) {
 function looksLikeList(text) {
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 2) return false;
-  const marked = lines.filter(l => /^\s*([-*+•]|\d+[.)]|\[[ xX]?\]|☐)/.test(l)).length;
-  return marked >= Math.max(2, lines.length * 0.6);
+  const marked = lines.filter(l => /^\s*([-*+•]|\d+[.)]|\[[ xX]?\]|☐|☑|✓)/.test(l)).length;
+  return marked >= Math.max(2, lines.length * 0.5);
 }
 
 // ---------- Gestion des blocs ----------
@@ -429,6 +436,39 @@ function kindOf(f) {
   if (/^image\//.test(f.type) || /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/.test(n)) return 'image';
   return null;
 }
+// Texte de liste → { t: titre, g: [[rayon, [éléments]]] }
+function parseListText(text) {
+  const isItem = l => /^\s*([-*+•]|\d+[.)]|\[[ xX]?\]|☐|☑|✓)/.test(l);
+  const lines = text.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(l => l && !/^```/.test(l));
+  const firstItem = lines.findIndex(isItem);
+  if (firstItem < 0) return null;
+  const isCaps = s => /[A-ZÀ-Ý]/.test(s) && s === s.toLocaleUpperCase('fr-FR');
+  const clean = s => s.replace(/^#+\s*/, '').replace(/\*\*/g, '').replace(/\s*[:：]\s*$/, '').trim();
+  const nice = s => (isCaps(s) ? s.charAt(0) + s.slice(1).toLocaleLowerCase('fr-FR') : s);
+  const pre = lines.slice(0, firstItem).map(clean);
+  let title = '', group = '';
+  if (pre.length === 1) title = pre[0];
+  else if (pre.length > 1) {
+    const last = pre[pre.length - 1];
+    if (isCaps(last) || /^#{2,}/.test(lines[firstItem - 1])) { group = nice(last); title = pre[pre.length - 2]; }
+    else title = last;
+  }
+  const groups = []; let cur = { t: group, items: [] };
+  lines.slice(firstItem).forEach(l => {
+    if (isItem(l)) { const done = /^\s*([-*+•]\s*)?(\[[xX]\]|☑|✓)/.test(l); cur.items.push((done ? '[x] ' : '') + l.replace(/^\s*([-*+•]\s*)?(\[[ xX]?\]|☐|☑|✓|\d+[.)])?\s*/, '').trim()); }
+    else { if (cur.items.length) groups.push(cur); cur = { t: nice(clean(l)), items: [] }; }
+  });
+  if (cur.items.length) groups.push(cur);
+  return { t: title, g: groups.map(g => [g.t, g.items.filter(Boolean)]) };
+}
+function listBlocksFrom(data) {
+  const groups = (data.g || []).filter(g => g && g[1] && g[1].length);
+  const multi = groups.length > 1 || !!(groups[0] && groups[0][0]);
+  const out = [];
+  if (multi && data.t) out.push(newBlock('text', { text: '# ' + data.t, align: 'center' }));
+  groups.forEach(([title, items]) => out.push(newBlock('list', { title: multi ? (title || '') : (data.t || ''), items: items.map(String).join('\n') })));
+  return out;
+}
 function addText(txt) {
   txt = txt.replace(/\r/g, '').trim(); if (!txt) return;
   if (isLabelTpl()) {
@@ -437,11 +477,13 @@ function addText(txt) {
     L.touched = { title: !!t, subtitle: !!s, detail: !!d };
     renderLabelEditor(); changed(); toast('Texte placé sur l\'étiquette ✓'); return;
   }
-  if (looksLikeList(txt)) {
-    const lines = txt.split('\n'); let title = '';
-    if (!/^\s*([-*+•]|\d+[.)]|\[)/.test(lines[0])) title = lines.shift().replace(/^#+\s*/, '').replace(/\s*[:：]\s*$/, '').trim();
-    addBlock('list', { title, items: tidyList(lines.join('\n')) });
-    toast('Liste prête à cocher ✓');
+  const parsed = looksLikeList(txt) ? parseListText(txt) : null;
+  if (parsed && parsed.g.length) {
+    const blocks = listBlocksFrom(parsed);
+    state.blocks.splice(insertIndex(), 0, ...blocks);
+    selectedId = blocks[blocks.length - 1].id; renderBlocks(); changed();
+    const n = parsed.g.reduce((s, g) => s + g[1].length, 0);
+    toast(`Liste prête à cocher : ${n} éléments ✓`);
   } else { addBlock('text', { text: txt }); toast('Texte ajouté'); }
 }
 async function importFiles(files, target) {
@@ -806,14 +848,18 @@ function importFromHash() {
   if ('bluetooth' in navigator) history.replaceState(null, '', location.pathname); // hors Bluefy, on garde le lien pour pouvoir le rouvrir dans Bluefy
   const groups = (data.g || []).filter(g => g && g[1] && g[1].length);
   if (!groups.length) return false;
+  if (handoff(data)) return true;
+  receiveList(data, true);
+  return true;
+}
+function receiveList(data, fromLink) {
+  const groups = (data.g || []).filter(g => g && g[1] && g[1].length);
   const backup = state.blocks.slice();
-  const blocks = [];
-  const multi = groups.length > 1 || (groups[0][0] || '');
-  if (multi && data.t) blocks.push(newBlock('text', { text: '# ' + data.t, align: 'center' }));
-  groups.forEach(([title, items]) => blocks.push(newBlock('list', { title: multi ? (title || '') : (data.t || ''), items: items.map(String).join('\n'), size: 'M' })));
+  const blocks = listBlocksFrom(data);
   blocks.push(newBlock('text', { text: 'Imprimé le {date}', size: 'S', align: 'center' }));
   state.mode = 'tpe'; state.blocks = blocks; selectedId = null;
   save();
+  if (!fromLink) { syncTop(); renderBlocks(); changed(); }
   const n = groups.reduce((s, g) => s + g[1].length, 0);
   setTimeout(() => {
     if (!('bluetooth' in navigator)) toast('Liste reçue. Pour imprimer, ouvre ce lien dans Bluefy', true, { label: 'Copier le lien', run: async () => {
@@ -821,8 +867,27 @@ function importFromHash() {
     } });
     else toast(`« ${data.t || 'Liste'} » reçue : ${n} éléments`, false, { label: 'Annuler', run: () => { state.blocks = backup; renderBlocks(); changed(); } });
   }, 400);
+}
+// Un onglet Zebra Studio est déjà ouvert (et connecté) ? On lui passe la liste au lieu de tout refaire ici.
+const channel = ('BroadcastChannel' in window) ? new BroadcastChannel('zebra-studio') : null;
+let handedOff = false;
+function handoff(data) {
+  if (!channel || !('bluetooth' in navigator)) return false;
+  channel.postMessage({ type: 'liste', data });
+  // si un autre onglet répond, celui-ci s'efface
+  setTimeout(() => { if (!handedOff) { receiveList(data, false); } }, 700);
   return true;
 }
+if (channel) channel.onmessage = e => {
+  const m = e.data || {};
+  if (m.type === 'liste') { receiveList(m.data, false); channel.postMessage({ type: 'recu' }); window.focus && window.focus(); }
+  if (m.type === 'recu') {
+    handedOff = true;
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:100'; document.body.append(ov);
+    ov.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:30px;text-align:center;font:600 20px -apple-system,sans-serif;color:#1A1823;background:#FFF6EA">✓ Liste envoyée dans l\'onglet Zebra Studio déjà ouvert.<br><br><span style="font-weight:400;font-size:16px;color:#8A8494">Tu peux fermer cet onglet et revenir à l\'autre pour imprimer.</span></div>';
+    try { window.close(); } catch (_) {}
+  }
+};
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
