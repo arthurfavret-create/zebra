@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070350';
+const APP_VERSION = '202611070355';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -218,7 +218,7 @@ function card(b) {
     let t; const setThumb = (k, v) => { b[k] = v; changed(); clearTimeout(t); t = setTimeout(drawThumb, 120); };
     const isDraw = b.kind === 'draw';
     if (isDraw) more.append(h('button', { class: 'magic', onclick: e => { e.stopPropagation(); editDrawing(b); } }, '✏️ Modifier le dessin'));
-    more.append(
+    more.append(...[
       isDraw ? null : seg(b.render, [['photo', 'Photo'], ['net', 'Net']], v => setThumb('render', v)),
       isDraw ? null : h('label', { class: 'slider', title: 'Luminosité' }, '☾', h('input', { type: 'range', min: -60, max: 60, value: b.bright, oninput: e => setThumb('bright', +e.target.value) }), '☀︎'),
       h('label', { class: 'slider', title: 'Taille' }, '▫︎', h('input', { type: 'range', min: 30, max: 100, step: 5, value: b.width, oninput: e => setThumb('width', +e.target.value) }), '◻︎'),
@@ -229,7 +229,7 @@ function card(b) {
         const lab = h('span', { style: 'font-size:13px;color:var(--mute);min-width:84px' }, gap ? `Espace ${(gap / 8).toFixed(1).replace('.', ',')} mm` : 'Collé (frise)');
         return h('label', { class: 'slider', title: 'Espace sous l\'image' }, '⇣',
           h('input', { type: 'range', min: 0, max: 80, step: 2, value: gap, oninput: e => { const v = +e.target.value; lab.textContent = v ? `Espace ${(v / 8).toFixed(1).replace('.', ',')} mm` : 'Collé (frise)'; set('gap', v); } }), lab);
-      })());
+      })()].filter(Boolean));
   }
 
   else if (b.type === 'qr') {
