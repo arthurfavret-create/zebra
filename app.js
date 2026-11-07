@@ -1,9 +1,9 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070213';
+const APP_VERSION = '202611070217';
 
 // ---------- État ----------
-let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel(), dymoGap: 3.5 };
+let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
 let nextId = 1;
 let selectedId = null;
 const imageCache = new Map();
@@ -790,6 +790,52 @@ function openAI(block) {
 }
 $('aiBg').addEventListener('click', e => { if (e.target === $('aiBg')) $('aiBg').classList.remove('open'); });
 
+
+// ---------- Préparer la Zebra pour les étiquettes ----------
+// Une avance « à vide » de 106 mm : l'imprimante retient cette longueur et, à la fermeture du capot,
+// fera sortir exactement une étiquette. Elle est alors prête, la découpe tombe entre deux étiquettes.
+const PREP_ZPL = `^XA\n^MNN\n^PW${PW}\n^LL${DYMO_LL}\n^LH0,0\n^FO0,0^GB${PW},1,1,W^FS\n^PQ1\n^XZ\n`;
+let prepared = false;
+try { prepared = sessionStorage.getItem('zebra-prepared') === '1'; } catch (_) {}
+async function prepareLabels() {
+  if (printing) return;
+  printing = true;
+  try {
+    if (!(await ensureConnected())) return;
+    toast('Avance de 106 mm…');
+    await send(PREP_ZPL, () => {}, 20);
+    prepared = true; try { sessionStorage.setItem('zebra-prepared', '1'); } catch (_) {}
+    renderPrepBanner();
+    showPrepSteps();
+  } catch (e) { toast('Préparation impossible : ' + (e.message || e), true); }
+  finally { printing = false; }
+}
+function showPrepSteps() {
+  const sheet = $('aiSheet'); sheet.innerHTML = '';
+  const step = (n, t) => h('div', { class: 'result', style: 'display:flex;gap:12px;align-items:flex-start;margin:10px 0' },
+    h('b', { style: 'font-family:var(--display);font-size:22px;color:var(--pink);line-height:1' }, n), h('div', { style: 'flex:1;font-size:16px' }, t));
+  sheet.append(h('h3', {}, '🏷️ La Zebra connaît la taille des étiquettes'),
+    step('1', 'Ouvre le capot et mets le rouleau d\'étiquettes DYMO.'),
+    step('2', 'Cale la sortie pile entre deux étiquettes, au niveau de la barre de découpe.'),
+    step('3', 'Ferme le capot : une étiquette vide sort. C\'est prêt, chaque impression tombera pile sur une étiquette.'),
+    h('button', { class: 'go', style: 'margin-top:8px', onclick: () => $('aiBg').classList.remove('open') }, 'C\'est fait'));
+  $('aiBg').classList.add('open');
+}
+function renderPrepBanner() {
+  const box = $('prepBanner'); if (!box) return;
+  box.innerHTML = '';
+  box.style.display = state.mode === 'dymo' ? '' : 'none';
+  if (state.mode !== 'dymo') return;
+  if (prepared) {
+    box.append(h('div', { class: 'prep done' }, h('span', {}, '✓ Zebra préparée pour les étiquettes'),
+      h('button', { class: 'mini-chip', onclick: prepareLabels }, 'Refaire')));
+  } else {
+    box.append(h('div', { class: 'prep' },
+      h('div', {}, h('b', {}, 'Papier à étiquettes ?'), h('div', { class: 'small' }, 'Indique d\'abord la taille à la Zebra (avance de 106 mm à vide), puis charge le rouleau.')),
+      h('button', { class: 'magic', onclick: prepareLabels }, 'Préparer la Zebra')));
+  }
+}
+
 // ---------- Réglages globaux ----------
 function syncTop() {
   document.querySelectorAll('.mode').forEach(m => m.classList.toggle('active', m.dataset.mode === state.mode));
@@ -799,6 +845,7 @@ function syncTop() {
       h('span', { class: 'aa', style: `font-family:${FONTS[k].css}` }, 'Aa'), h('small', {}, label)));
   });
   $('labelEditor').style.display = state.mode === 'dymo' ? '' : 'none';
+  renderPrepBanner();
   $('freeEditor').style.display = isLabelTpl() ? 'none' : '';
   if (state.mode === 'dymo') renderLabelEditor();
   if (state.mode === 'dymo' && !isLabelTpl()) {
@@ -833,9 +880,6 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
     b.onclick = () => { document.querySelectorAll('#chunkSeg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); try { localStorage.setItem('zebra-chunk', b.dataset.v); } catch (_) {} };
   });
 })();
-function syncGap() { $('gapVal').textContent = dymoGap().toFixed(1).replace('.', ',') + ' mm'; $('pitchVal').textContent = `pas de ${(101 + dymoGap()).toFixed(1).replace('.', ',')} mm`; }
-$('gapMinus').onclick = () => { state.dymoGap = Math.max(0, Math.round((dymoGap() - 0.5) * 10) / 10); syncGap(); save(); };
-$('gapPlus').onclick = () => { state.dymoGap = Math.min(10, Math.round((dymoGap() + 0.5) * 10) / 10); syncGap(); save(); };
 $('btnUpdate').onclick = () => { location.replace(location.pathname + '?v=' + Date.now()); };
 $('appVersion').textContent = 'Version ' + APP_VERSION.replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/, '$3/$2 $4:$5');
 $('btnCopyZpl').onclick = async () => {
@@ -899,8 +943,7 @@ if (channel) channel.onmessage = e => {
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
-if (state.dymoGap == null) state.dymoGap = 3.5;
-syncGap();
+delete state.dymoGap;
 importFromHash();
 window.addEventListener('hashchange', () => { if (importFromHash()) { syncTop(); renderBlocks(); changed(); } });
 syncTop();

@@ -157,6 +157,10 @@
   .paper.land canvas { border-radius:12px; }
 
 
+  .prep { display:flex; align-items:center; gap:12px; justify-content:space-between; background:linear-gradient(120deg, rgba(255,201,60,.22), rgba(255,79,139,.14)); border-radius:18px; padding:12px 14px; margin:14px 0 2px; }
+  .prep b { font-family:var(--display); font-size:17px; }
+  .prep .small { font-size:13px; color:var(--mute); margin-top:2px; }
+  .prep.done { background:rgba(47,211,154,.14); font-weight:700; font-size:14px; }
   /* ---------- Claude ---------- */
   .ai-btn { border:0; border-radius:12px; height:40px; padding:0 14px; font-weight:700; color:#fff; background:linear-gradient(120deg, #D97757, var(--pink)); }
   #aiSheet textarea { width:100%; min-height:150px; border:0; outline:0; background:var(--bg); border-radius:16px; padding:14px; font-size:17px; line-height:1.45; resize:vertical; }
@@ -267,6 +271,7 @@
 
     <div class="chips" id="fonts"></div>
 
+    <div id="prepBanner"></div>
     <div id="labelEditor"></div>
     <div id="freeEditor">
     <div id="blocks"></div>
@@ -312,8 +317,6 @@
         <button data-v="20">Sûr</button><button data-v="100">Rapide</button><button data-v="180">Turbo</button>
       </span>
     </div>
-    <div class="line"><span>Espace entre étiquettes DYMO<br><small style="color:var(--mute)" id="pitchVal"></small></span>
-      <span class="seg"><button id="gapMinus">−</button><button class="on" id="gapVal" style="min-width:76px">3,5 mm</button><button id="gapPlus">+</button></span></div>
     <div class="line"><span id="appVersion">Version</span><button class="btn" id="btnUpdate">Charger la dernière version</button></div>
     <div class="line"><span>Code ZPL de la composition</span><button class="btn" id="btnCopyZpl">Copier</button></div>
     <div class="line"><span>Page de test Bluetooth</span><a href="test-ble.html">Ouvrir</a></div>
@@ -330,8 +333,8 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070213"></script>
-<script src="label.js?v=202611070213"></script>
-<script src="app.js?v=202611070213"></script>
+<script src="engine.js?v=202611070217"></script>
+<script src="label.js?v=202611070217"></script>
+<script src="app.js?v=202611070217"></script>
 </body>
 </html>
