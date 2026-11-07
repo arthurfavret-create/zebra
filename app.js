@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611071437';
+const APP_VERSION = '202611071444';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -141,7 +141,7 @@ function seg(value, options, onpick) {
   return s;
 }
 function autosize(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
-const SIZE_OPTS = [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']];
+const SIZE_OPTS = [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL'], ['XXL', 'XXL'], ['XXXL', '3XL']];
 
 // ---------- Cartes ----------
 function card(b) {

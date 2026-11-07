@@ -55,7 +55,7 @@ const FONT_BY_CSS = Object.fromEntries(Object.values(FONTS).map(f => [f.css, f])
 // anciennes polices → nouvelles
 const FONT_ALIASES = { sans: 'modern', serif: 'elegant', machine: 'typewriter', marker: 'poster' };
 function fontKey(k) { return FONTS[k] ? k : FONT_ALIASES[k] || 'modern'; }
-const SIZES = { S: 20, M: 25, L: 31, XL: 40 };
+const SIZES = { S: 20, M: 25, L: 31, XL: 40, XXL: 52, XXXL: 68 };
 
 // ---------- Rendu : texte Markdown ----------
 function parseInline(s) {
@@ -412,7 +412,7 @@ function qrCanvas(b) {
   if (!text) return null;
   const qr = qrcode(0, 'M'); qr.addData(text, 'Byte'); qr.make();
   const n = qr.getModuleCount();
-  const mod = { S: 3, M: 4, L: 6, XL: 8 }[b.size] || 4;
+  const mod = Math.min({ S: 3, M: 4, L: 6, XL: 8, XXL: 10, XXXL: 12 }[b.size] || 4, Math.floor((PW - 16) / (n + 4))); // jamais plus large que le papier
   const quiet = mod * 2;
   const c = document.createElement('canvas'); c.width = c.height = n * mod + quiet * 2;
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.fillStyle = '#000';
