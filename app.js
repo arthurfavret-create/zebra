@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070257';
+const APP_VERSION = '202611070300';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -590,16 +590,47 @@ async function attach() {
   service.getCharacteristic(ZEBRA_READ).then(rc => rc.startNotifications().then(() =>
     rc.addEventListener('characteristicvaluechanged', e => log('Imprimante : ' + new TextDecoder().decode(e.target.value).trim())))).catch(() => {});
 }
+// Nom Bluetooth de l'imprimante : retenu sur cet iPad après la première connexion (jamais dans le code public)
+function savedPrinter() { try { return localStorage.getItem('zebra-printer') || ''; } catch (_) { return ''; } }
+function rememberPrinter(name) { try { if (name) localStorage.setItem('zebra-printer', name); else localStorage.removeItem('zebra-printer'); } catch (_) {} syncPrinter(); }
+function onDisconnect() { writeChar = null; setConn('Connecter'); log('Imprimante déconnectée.'); }
+async function useDevice(dev) {
+  if (device && device !== dev && device.gatt.connected) { try { device.gatt.disconnect(); } catch (_) {} }
+  device = dev; writeChar = null;
+  device.addEventListener('gattserverdisconnected', onDisconnect);
+  setConn('Connexion…');
+  await attach();
+  rememberPrinter(device.name || '');
+}
+// Reconnexion sans fenêtre de choix, si le navigateur a gardé l'autorisation (getDevices)
+async function silentReconnect() {
+  const name = savedPrinter();
+  if (!name || !navigator.bluetooth || !navigator.bluetooth.getDevices) return false;
+  try {
+    const list = await navigator.bluetooth.getDevices();
+    const dev = list.find(d => d.name === name);
+    if (!dev) return false;
+    await useDevice(dev);
+    log('Reconnexion automatique à ' + name);
+    return true;
+  } catch (_) { return false; }
+}
 async function connect() {
   if (!('bluetooth' in navigator)) { toast('Ouvre cette page dans Bluefy pour imprimer 📱', true); setConn('Bluefy requis', 'err'); return false; }
   try {
     setConn('Recherche…');
-    if (device && device.gatt.connected) { try { device.gatt.disconnect(); } catch (_) {} }
-    writeChar = null;
-    device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [ZEBRA_SERVICE] });
-    device.addEventListener('gattserverdisconnected', () => { writeChar = null; setConn('Connecter'); log('Imprimante déconnectée.'); });
-    setConn('Connexion…');
-    await attach();
+    if (await silentReconnect()) { toast('Imprimante connectée 🦓'); return true; }
+    const name = savedPrinter();
+    // la fenêtre ne montre que l'imprimante enregistrée, sinon les imprimantes Zebra (nom en « XXZ »)
+    const filters = name ? [{ name }] : [{ namePrefix: 'XXZ' }];
+    let dev;
+    try { dev = await navigator.bluetooth.requestDevice({ filters, optionalServices: [ZEBRA_SERVICE] }); }
+    catch (e) {
+      if (e.name === 'NotFoundError' && /cancel/i.test(e.message || '')) throw e;
+      // filtre non pris en charge ou imprimante renommée : liste complète
+      dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [ZEBRA_SERVICE] });
+    }
+    await useDevice(dev);
     toast('Imprimante connectée 🦓');
     return true;
   } catch (e) {
@@ -612,6 +643,12 @@ async function ensureConnected() {
   if (writeChar && device && device.gatt.connected) return true;
   if (device) { try { await attach(); return true; } catch (_) {} }
   return connect();
+}
+function syncPrinter() {
+  const el = $('printerName'); if (!el) return;
+  const n = savedPrinter();
+  el.textContent = n || 'aucune (la première connexion l\'enregistre)';
+  $('btnForget').disabled = !n;
 }
 function chunkSize() { try { return +(localStorage.getItem('zebra-chunk') || 20); } catch (_) { return 20; } }
 let cancelSend = false;
@@ -641,6 +678,8 @@ function confetti() {
   }
 }
 $('btnConnect').onclick = connect;
+$('btnForget').onclick = () => { rememberPrinter(''); toast('Imprimante oubliée : la prochaine connexion affichera toutes les Zebra'); };
+syncPrinter();
 $('btnPrint').onclick = async () => {
   if (printing) { cancelSend = true; $('printLabel').textContent = 'Annulation…'; return; }
   cancelSend = false;
