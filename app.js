@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070300';
+const APP_VERSION = '202611070302';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -678,6 +678,20 @@ function confetti() {
   }
 }
 $('btnConnect').onclick = connect;
+// Avancer le papier : 2 cm en ticket ; une étiquette entière en mode Étiquette (pour rester calé sur le pas)
+let feeding = false;
+$('btnFeed').onclick = async () => {
+  if (printing || feeding) return;
+  feeding = true; $('btnFeed').style.opacity = '.5';
+  try {
+    if (!(await ensureConnected())) return;
+    const dymo = state.mode === 'dymo';
+    const len = dymo ? labelDims().LL : 160;
+    await send(`^XA\n^MNN\n^PW${PW}\n^LL${len}\n^LH0,0\n^FO0,0^GB${PW},1,1,W^FS\n^PQ1\n^XZ\n`, () => {}, 20);
+    toast(dymo ? 'Une étiquette avancée' : 'Papier avancé de 2 cm');
+  } catch (e) { toast('Avance impossible : ' + (e.message || e), true); }
+  finally { feeding = false; $('btnFeed').style.opacity = ''; }
+};
 $('btnForget').onclick = () => { rememberPrinter(''); toast('Imprimante oubliée : la prochaine connexion affichera toutes les Zebra'); };
 syncPrinter();
 $('btnPrint').onclick = async () => {
