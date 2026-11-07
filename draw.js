@@ -20,7 +20,7 @@ function openDrawing(opts) {
     if (k !== 1) H = Math.round(H * k);
     let strokes = (opts.strokes || []).map(s => ({ tool: s.tool, w: s.w, i: s.i, pts: s.pts.map(p => [Math.round(p[0] * k), Math.round(p[1] * k), p[2]]) }));
     const redo = [];
-    let tool = 'feutre', penSeen = false, handMode = false, intensity = 1;
+    let tool = 'feutre', penSeen = false, handMode = true, intensity = 1; // le doigt fait défiler par défaut
     const active = new Map();   // traits en cours, un par pointeur (stylet, doigt…)
     let scroller = null;        // défilement au doigt
 
@@ -36,14 +36,14 @@ function openDrawing(opts) {
         <span class="dsep"></span>
         ${[1, 0.7, 0.45, 0.25].map(v => `<button class="dtool dint${v === 1 ? ' on' : ''}" data-int="${v}"><i style="background:rgb(${Math.round(255 * (1 - v))},${Math.round(255 * (1 - v))},${Math.round(255 * (1 - v))})"></i>${Math.round(v * 100)} %</button>`).join('')}
         <span class="dsep"></span>
-        <button class="dtool" data-act="hand"><span>✋</span>Défiler</button>
+        <button class="dtool on" data-act="hand"><span>✋</span>Doigt : défile</button>
         <button class="dtool" data-act="undo"><span>↶</span>Annuler</button>
         <button class="dtool" data-act="redo"><span>↷</span>Refaire</button>
         <button class="dtool" data-act="clear"><span>🗑</span>Effacer</button>
         ${opts.fixedHeight ? '' : `<span class="dsep"></span><button class="dtool" data-act="shorter"><span>−</span>Raccourcir</button><button class="dtool" data-act="taller"><span>+</span>Allonger</button>`}
       </div>
       <div class="draw-stage"><div class="draw-paper"><canvas></canvas></div></div>
-      <div class="draw-hint">Le stylet dessine, le doigt fait défiler. Les gris sont imprimés en fine trame de points.</div>`;
+      <div class="draw-hint">Le stylet dessine, le doigt fait défiler (touche « Doigt » pour dessiner au doigt). Les gris sont imprimés en fine trame de points.</div>`;
     document.body.append(bg);
     const cv = bg.querySelector('canvas'), ctx = cv.getContext('2d');
     const stage = bg.querySelector('.draw-stage');
@@ -98,8 +98,8 @@ function openDrawing(opts) {
           redraw();
         }
       }
-      const touchScroll = e.pointerType === 'touch' && (penSeen || handMode);
-      if ((handMode && e.pointerType !== 'pen') || touchScroll) {
+      const touchScroll = e.pointerType === 'touch' && handMode;
+      if ((handMode && e.pointerType === 'touch') || touchScroll) {
         scroller = { id: e.pointerId, y: e.clientY, top: stage.scrollTop }; // tout contact du doigt fait défiler
         return;
       }
@@ -140,7 +140,7 @@ function openDrawing(opts) {
       if (tb) { tool = tb.dataset.tool; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b === tb)); return; }
       const act = (e.target.closest('[data-act]') || {}).dataset; if (!act) return;
       switch (act.act) {
-        case 'hand': handMode = !handMode; e.target.closest('[data-act]').classList.toggle('on', handMode); break;
+        case 'hand': { handMode = !handMode; const hb = e.target.closest('[data-act]'); hb.classList.toggle('on', handMode); hb.lastChild.textContent = handMode ? 'Doigt : défile' : 'Doigt : dessine'; break; }
         case 'undo': if (strokes.length) { redo.push(strokes.pop()); redraw(); } break;
         case 'redo': if (redo.length) { strokes.push(redo.pop()); redraw(); } break;
         case 'clear': if (strokes.length) { redo.push(...strokes.reverse()); strokes = []; redraw(); } break;

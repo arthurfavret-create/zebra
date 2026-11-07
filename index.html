@@ -103,6 +103,8 @@
   .block textarea::placeholder { color:var(--mute); }
   .more { display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); flex-wrap:wrap; gap:8px; align-items:center; }
   .block.sel .more { display:flex; }
+  /* long texte : la barre de mise en forme reste visible en bas de l'écran pendant qu'on fait défiler */
+  .block.sel[data-type=text] .more { position:sticky; bottom:92px; z-index:6; background:var(--card); margin:12px -16px -14px -22px; padding:10px 16px 12px 22px; border-radius:0 0 20px 20px; box-shadow:0 -8px 16px -12px rgba(0,0,0,.25); }
   .seg { display:inline-flex; background:var(--bg); border-radius:12px; padding:3px; gap:2px; }
   .seg button { border:0; background:transparent; min-width:38px; height:34px; border-radius:9px; font-weight:700; font-size:14px; padding:0 10px; }
   .seg button.on { background:var(--card); box-shadow:0 1px 3px rgba(0,0,0,.12); }
@@ -182,12 +184,12 @@
   .draw-top b { font-family:var(--display); font-size:20px; }
   .dbtn { border:0; background:var(--card); box-shadow:var(--shadow); border-radius:12px; padding:10px 16px; font-weight:700; }
   .dbtn.primary { background:linear-gradient(120deg, var(--pink), var(--orange)); color:#fff; }
-  .draw-tools { display:flex; gap:6px; overflow-x:auto; padding:6px 16px 10px; scrollbar-width:none; }
+  .draw-tools { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:6px 16px 10px; }
   .dtool { flex:none; display:flex; flex-direction:column; align-items:center; gap:2px; border:2px solid transparent; background:var(--card); border-radius:12px; padding:6px 10px; font-size:11px; font-weight:700; min-width:62px; }
   .dtool span { font-size:20px; line-height:1.1; }
   .dtool.on { border-color:var(--pink); }
   .dint i { display:block; width:20px; height:20px; border-radius:50%; border:2px solid var(--line); margin:1px 0 2px; }
-  .dsep { width:1px; background:var(--line); margin:4px 4px; flex:none; }
+  .dsep { width:1px; background:var(--line); margin:4px 2px; flex:none; align-self:stretch; }
   .draw-stage { flex:1; overflow:auto; display:flex; justify-content:center; padding:10px 16px 20px; }
   .draw-paper { background:#fff; box-shadow:0 10px 30px rgba(0,0,0,.18); border-radius:6px; align-self:flex-start; }
   .draw-paper canvas { display:block; touch-action:none; cursor:crosshair; }
@@ -368,9 +370,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070411"></script>
-<script src="draw.js?v=202611070411"></script>
-<script src="label.js?v=202611070411"></script>
-<script src="app.js?v=202611070411"></script>
+<script src="engine.js?v=202611070421"></script>
+<script src="draw.js?v=202611070421"></script>
+<script src="label.js?v=202611070421"></script>
+<script src="app.js?v=202611070421"></script>
 </body>
 </html>

@@ -110,7 +110,7 @@ function layoutRich(ctx, runs, x, width, y, size, family, align, draw, forceBold
       ln.forEach(w => { if (w.r.hl) { ctx.fillStyle = HL_COLOR; ctx.fillRect(Math.floor(hx), by - Math.round(size * 0.92), Math.ceil(w.w) + 1, Math.round(size * 1.18)); } hx += w.w; });
       ln.forEach(w => {
         ctx.font = fontFor(w.r, size, family, forceBold);
-        ctx.fillStyle = w.r.tone ? TONE_COLOR : '#000';
+        ctx.fillStyle = w.r.inv ? '#fff' : w.r.tone ? TONE_COLOR : '#000';
         if (!w.space) ctx.fillText(w.t, cx, by);
         if (w.r.ul) ctx.fillRect(Math.floor(cx), by + Math.max(2, Math.round(size * 0.1)), Math.ceil(w.w) + (w.space ? 1 : 0), Math.max(2, Math.round(size * 0.07)));
         cx += w.w;
@@ -135,13 +135,47 @@ function renderTextBlock(ctx, b, W, draw) {
   const base = SIZES[b.size] || SIZES.M;
   const lines = fillVars(b.text || '').replace(/\r/g, '').split('\n');
   let y = 0;
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, '');
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li].replace(/\s+$/, '');
     let m;
     if (!line.trim()) { y += Math.round(base * 0.55); continue; }
-    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
-      const sz = Math.round(base * [0, 1.75, 1.4, 1.15][m[1].length]);
-      y += layoutRich(ctx, parseInline(m[2]), 0, W, y, sz, family, b.align, draw, true) + Math.round(base * 0.2);
+    // Hiérarchie de titres, du plus fort au plus discret :
+    // # = bandeau noir, texte blanc · ## = grand, fond tramé · ### = gras souligné · #### = petites capitales grasses
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) {
+      const lvl = m[1].length, text = m[2];
+      if (y > 0) y += Math.round(base * (lvl <= 2 ? 0.7 : 0.45));
+      if (lvl === 1) {
+        const sz = Math.round(base * 1.7), pad = Math.round(base * 0.35);
+        const hh = layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, false, true);
+        if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y, W, hh + pad * 2); layoutRich(ctx, parseInline(text).map(r => Object.assign(r, { inv: true })), pad, W - pad * 2, y + pad, sz, family, b.align, true, true); }
+        y += hh + pad * 2 + Math.round(base * 0.35);
+      } else if (lvl === 2) {
+        const sz = Math.round(base * 1.4), pad = Math.round(base * 0.25);
+        const hh = layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, false, true);
+        if (draw) { ctx.fillStyle = HL_COLOR; ctx.fillRect(0, y, W, hh + pad * 2); layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, true, true); }
+        y += hh + pad * 2 + Math.round(base * 0.3);
+      } else if (lvl === 3) {
+        const sz = Math.round(base * 1.18);
+        const hh = layoutRich(ctx, parseInline(text), 0, W, y, sz, family, b.align, draw, true);
+        if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y + hh + 1, W, 2); }
+        y += hh + 5 + Math.round(base * 0.2);
+      } else {
+        y += layoutRich(ctx, parseInline(text.toLocaleUpperCase('fr-FR')), 0, W, y, Math.round(base * 0.95), family, b.align, draw, true) + Math.round(base * 0.15);
+      }
+      continue;
+    }
+    // Encadré : les lignes qui commencent par « > » forment une boîte bordée
+    if (/^>\s?/.test(line)) {
+      const inner = [];
+      while (li < lines.length && /^>\s?/.test(lines[li])) { inner.push(lines[li].replace(/^>\s?/, '')); li++; }
+      li--;
+      const pad = Math.round(base * 0.45), sub = { text: inner.join('\n'), size: b.size, align: b.align, font: b.font };
+      const ih = renderTextBlock(ctx, sub, W - pad * 2 - 6, false);
+      if (draw) {
+        ctx.save(); ctx.translate(pad + 3, y + pad + 3); renderTextBlock(ctx, sub, W - pad * 2 - 6, true); ctx.restore();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeRect(1.5, y + 1.5, W - 3, ih + pad * 2 + 3);
+      }
+      y += ih + pad * 2 + 6 + Math.round(base * 0.3);
       continue;
     }
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
@@ -167,11 +201,6 @@ function renderTextBlock(ctx, b, W, draw) {
       if (draw) { ctx.fillStyle = '#000'; ctx.fillText(label, 0, y + Math.round(base * 0.95)); }
       y += layoutRich(ctx, parseInline(text), ind, W - ind, y, base, family, 'left', draw) + 2;
       continue;
-    }
-    if ((m = line.match(/^>\s?(.*)$/))) {
-      const h = layoutRich(ctx, parseInline(m[1]).map(r => Object.assign({}, r, { i: true })), 16, W - 16, y, base, family, b.align, draw);
-      if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(2, y + 2, 4, h - 4); }
-      y += h + 2; continue;
     }
     y += layoutRich(ctx, parseInline(line), 0, W, y, base, family, b.align, draw);
   }

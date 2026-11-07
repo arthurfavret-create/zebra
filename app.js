@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070411';
+const APP_VERSION = '202611070421';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -165,8 +165,13 @@ function card(b) {
     const prefix = p => {
       const v = ta.value, s = ta.selectionStart; const ls = v.lastIndexOf('\n', s - 1) + 1;
       const line = v.slice(ls).split('\n')[0];
-      const clean = line.replace(/^(#{1,3}\s|[-*+]\s\[[ xX]\]\s|[-*+]\s)/, '');
-      const next = line.startsWith(p) ? clean : p + clean;
+      const clean = line.replace(/^(#{1,4}\s|>\s?|[-*+]\s\[[ xX]\]\s|[-*+]\s)/, '');
+      let next;
+      if (p === '#') { // titres : chaque appui descend d'un niveau (1 → 2 → 3 → 4 → texte normal)
+        const m = line.match(/^(#{1,4})\s/); const n = m ? m[1].length + 1 : 1;
+        next = n > 4 ? clean : '#'.repeat(n) + ' ' + clean;
+        toast(n > 4 ? 'Texte normal' : ['', 'Titre 1 : bandeau noir', 'Titre 2 : fond tramé', 'Titre 3 : souligné', 'Titre 4 : petites capitales'][n]);
+      } else next = line.startsWith(p) ? clean : p + clean;
       ta.value = v.slice(0, ls) + next + v.slice(ls + line.length);
       ta.focus(); autosize(ta); set('text', ta.value);
     };
@@ -174,7 +179,8 @@ function card(b) {
       h('div', { class: 'fmt' },
         h('button', { title: 'Gras', onclick: e => { e.stopPropagation(); wrap('**', '**'); } }, 'B'),
         h('button', { title: 'Italique', style: 'font-style:italic', onclick: e => { e.stopPropagation(); wrap('*', '*'); } }, 'I'),
-        h('button', { title: 'Titre', onclick: e => { e.stopPropagation(); prefix('# '); } }, 'H'),
+        h('button', { title: 'Titre (appuie plusieurs fois pour changer de niveau)', onclick: e => { e.stopPropagation(); prefix('#'); } }, 'H'),
+        h('button', { title: 'Encadré', onclick: e => { e.stopPropagation(); prefix('> '); } }, '▢'),
         h('button', { title: 'Puce', onclick: e => { e.stopPropagation(); prefix('- '); } }, '•'),
         h('button', { title: 'Case à cocher', onclick: e => { e.stopPropagation(); prefix('- [ ] '); } }, '☐')),
       h('div', { class: 'fmt' },
@@ -458,8 +464,16 @@ async function pdfToText(file) {
   for (let i = 1; i <= n; i++) {
     const page = await pdf.getPage(i);
     const tc = await page.getTextContent();
+    // polices chargées → on sait quels morceaux sont en gras
+    const boldFont = {};
+    try {
+      await page.getOperatorList();
+      Object.keys(tc.styles || {}).forEach(fn => {
+        try { const f = page.commonObjs.get(fn); boldFont[fn] = !!(f && (f.bold || /bold|black|heavy|semibold|demi/i.test(f.name || ''))); } catch (_) {}
+      });
+    } catch (_) {}
     // regroupe les morceaux par ligne (même hauteur sur la page)
-    const items = tc.items.filter(it => it.str && it.str.trim() !== '' || it.hasEOL).map(it => ({ s: it.str, x: it.transform[4], y: it.transform[5], h: Math.abs(it.transform[3]) || it.height || 10, w: it.width || 0 }));
+    const items = tc.items.filter(it => it.str && it.str.trim() !== '' || it.hasEOL).map(it => ({ s: it.str, x: it.transform[4], y: it.transform[5], h: Math.abs(it.transform[3]) || it.height || 10, w: it.width || 0, b: !!boldFont[it.fontName] }));
     const lines = [];
     items.sort((a, b) => b.y - a.y || a.x - b.x).forEach(it => {
       if (!it.s) return;
@@ -471,15 +485,32 @@ async function pdfToText(file) {
       l.parts.sort((a, b) => a.x - b.x);
       let s = '', end = null;
       l.parts.forEach(p => { if (end != null && p.x - end > p.h * 0.2 && !/\s$/.test(s) && !/^\s/.test(p.s)) s += ' '; s += p.s; end = p.x + p.w; });
-      return { y: l.y, x: l.parts[0].x, h: Math.max(...l.parts.map(p => p.h)), t: s.replace(/\s+/g, ' ').trim() };
+      const boldChars = l.parts.reduce((n, p) => n + (p.b ? p.s.length : 0), 0), allChars = l.parts.reduce((n, p) => n + p.s.length, 0);
+      return { y: l.y, x: l.parts[0].x, h: Math.max(...l.parts.map(p => p.h)), t: s.replace(/\s+/g, ' ').trim(), bold: allChars > 0 && boldChars / allChars > 0.7 };
     }).filter(l => l.t);
     chars += out.reduce((s, l) => s + l.t.length, 0);
     pages.push(out);
   }
   if (chars < 20) return null; // PDF scanné (image) : pas de texte à lire
   const all = pages.flat();
-  const sizes = all.map(l => l.h).sort((a, b) => a - b);
-  const body = sizes[Math.floor(sizes.length / 2)] || 10;
+  // taille du texte courant = celle qui porte le plus de caractères
+  const byChars = {};
+  all.forEach(l => { const k = Math.round(l.h * 2) / 2; byChars[k] = (byChars[k] || 0) + l.t.length; });
+  const body = +Object.keys(byChars).sort((a, b) => byChars[b] - byChars[a])[0] || 10;
+  // tailles plus grandes que le texte courant → niveaux 1 à 3 (la plus grande = niveau 1)
+  const big = [...new Set(all.filter(l => l.h >= body * 1.12 && l.t.length < 120).map(l => Math.round(l.h)))].sort((a, b) => b - a);
+  const tiers = [];
+  big.forEach(s => { if (!tiers.length || s < tiers[tiers.length - 1] * 0.9) tiers.push(s); });
+  const levelOf = l => {
+    if (l.h >= body * 1.12 && l.t.length < 120) {
+      const r = Math.round(l.h); let k = tiers.findIndex(s => r >= s * 0.9);
+      if (k < 0) k = tiers.length - 1;
+      return Math.min(3, k + 1);
+    }
+    if (l.bold && l.t.length < 70 && !/[.;,]$/.test(l.t)) return 4; // ligne courte en gras = intertitre discret
+    return 0;
+  };
+  const isBox = t => /^(important|attention|à retenir|a retenir|note|nb|n\.b\.|astuce|conseil|remarque|avertissement|⚠)/i.test(t);
   const md = [];
   const xs = all.map(l => Math.round(l.x)).sort((a, b) => a - b);
   const leftX = xs[Math.floor(xs.length * 0.1)] || 0;          // marge gauche du texte courant
@@ -492,18 +523,30 @@ async function pdfToText(file) {
       const gap = prev ? prev.y - l.y : 0;
       const indented = l.x > leftX + body * 0.8 && l.t.length < maxLen * 0.7;
       const bullet = /^([•●▪◦‣\-–]|\d+[.)])\s+/.test(l.t) || (indented && !/[.:;,]$/.test(l.t) && l.h < body * 1.3);
-      if (l.h >= body * 1.3 && l.t.length < 90) { flush(); md.push((l.h >= body * 1.7 ? '# ' : '## ') + l.t); return; }
+      const lvl = levelOf(l);
+      if (lvl) {
+        flush();
+        // titre sur plusieurs lignes : on recolle au titre précédent de même niveau
+        const prevMd = md[md.length - 1] || '', mark = '#'.repeat(lvl) + ' ';
+        if (prev && levelOf(prev) === lvl && prevMd.startsWith(mark) && gap < l.h * 1.6) md[md.length - 1] += ' ' + l.t;
+        else md.push(mark + l.t);
+        return;
+      }
+      if (!para && isBox(l.t)) { para = '\u0000BOX' + l.t; return; }
       if (bullet) { flush(); md.push('- ' + l.t.replace(/^([•●▪◦‣\-–]|\d+[.)])\s+/, '')); return; }
       if (prev && gap > Math.max(l.h, prev.h) * 1.7) flush();
       // ligne précédente courte et sans ponctuation finale : vraie fin de ligne (adresse, liste…)
       if (para && prev && prev.t.length < maxLen * 0.55 && !/[,;:\-]$/.test(prev.t) && !/^[a-zà-ÿ]/.test(l.t)) flush();
       if (!para && md.length && /^- /.test(md[md.length - 1]) && prev && gap <= l.h * 1.5 && !/^[A-ZÀ-Ý]/.test(l.t)) { md[md.length - 1] += ' ' + l.t; return; }
-      para = para ? (/-$/.test(para) ? para.slice(0, -1) + l.t : para + ' ' + l.t) : l.t;
+      const t = l.bold ? '**' + l.t + '**' : l.t; // ligne entière en gras = information importante
+      para = para ? (/-$/.test(para) ? para.slice(0, -1) + t : para + ' ' + t) : t;
     });
     flush();
     md.push('');
   });
-  let text = md.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  // paragraphes « Important… », « Attention… » → encadrés
+  const md2 = md.map(p => p.startsWith('\u0000BOX') ? '> ' + p.slice(4) : p);
+  let text = md2.join('\n\n').replace(/\*\*\s?\*\*/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   for (let k = 0; k < 3; k++) text = text.replace(/^(- .*)\n\n(?=- )/gm, '$1\n'); // puces collées
   return { text, pages: pdf.numPages, used: n };
 }
