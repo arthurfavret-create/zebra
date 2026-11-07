@@ -138,49 +138,88 @@ function renderTextBlock(ctx, b, W, draw) {
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li].replace(/\s+$/, '');
     let m;
-    if (!line.trim()) { y += Math.round(base * 0.55); continue; }
+    if (!line.trim()) { y += Math.round(base * 0.75); continue; }
     // Hiérarchie de titres, du plus fort au plus discret :
     // # = bandeau noir, texte blanc · ## = grand, fond tramé · ### = gras souligné · #### = petites capitales grasses
     if ((m = line.match(/^(#{1,4})\s+(.*)$/))) {
       const lvl = m[1].length, text = m[2];
-      if (y > 0) y += Math.round(base * (lvl <= 2 ? 0.7 : 0.45));
+      if (y > 0) y += Math.round(base * [0, 1.1, 0.95, 0.7, 0.55][lvl]); // de l'air avant chaque titre
       if (lvl === 1) {
-        const sz = Math.round(base * 1.7), pad = Math.round(base * 0.35);
+        // bandeau noir, texte blanc, puis fondu tramé du noir vers le blanc
+        const sz = Math.round(base * 1.75), pad = Math.round(base * 0.42), fade = Math.round(base * 0.75);
         const hh = layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, false, true);
-        if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y, W, hh + pad * 2); layoutRich(ctx, parseInline(text).map(r => Object.assign(r, { inv: true })), pad, W - pad * 2, y + pad, sz, family, b.align, true, true); }
-        y += hh + pad * 2 + Math.round(base * 0.35);
+        if (draw) {
+          ctx.fillStyle = '#000'; ctx.fillRect(0, y, W, hh + pad * 2);
+          toneGradient(ctx, 0, y + hh + pad * 2, W, fade, 0.9, 0, true);
+          layoutRich(ctx, parseInline(text).map(r => Object.assign(r, { inv: true })), pad, W - pad * 2, y + pad, sz, family, b.align, true, true);
+        }
+        y += hh + pad * 2 + fade + Math.round(base * 0.25);
       } else if (lvl === 2) {
-        const sz = Math.round(base * 1.4), pad = Math.round(base * 0.25);
+        // dégradé horizontal soutenu → clair, filet noir dessous
+        const sz = Math.round(base * 1.42), pad = Math.round(base * 0.3);
         const hh = layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, false, true);
-        if (draw) { ctx.fillStyle = HL_COLOR; ctx.fillRect(0, y, W, hh + pad * 2); layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, true, true); }
-        y += hh + pad * 2 + Math.round(base * 0.3);
+        if (draw) {
+          toneGradient(ctx, 0, y, W, hh + pad * 2, 0.26, 0, false);
+          ctx.fillStyle = '#000'; ctx.fillRect(0, y + hh + pad * 2, W, 3);
+          layoutRich(ctx, parseInline(text), pad, W - pad * 2, y + pad, sz, family, b.align, true, true);
+        }
+        y += hh + pad * 2 + 3 + Math.round(base * 0.4);
       } else if (lvl === 3) {
-        const sz = Math.round(base * 1.18);
-        const hh = layoutRich(ctx, parseInline(text), 0, W, y, sz, family, b.align, draw, true);
-        if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y + hh + 1, W, 2); }
-        y += hh + 5 + Math.round(base * 0.2);
+        // barre noire à gauche, titre gras, pointillés dessous
+        const sz = Math.round(base * 1.2), bar = Math.max(5, Math.round(base * 0.22)), ind = bar + Math.round(base * 0.45);
+        const hh = layoutRich(ctx, parseInline(text), ind, W - ind, y, sz, family, 'left', draw, true);
+        if (draw) {
+          ctx.fillStyle = '#000'; ctx.fillRect(0, y + 2, bar, hh - 2);
+          for (let x = ind; x < W; x += 8) ctx.fillRect(x, y + hh + 4, 4, 2);
+        }
+        y += hh + 8 + Math.round(base * 0.3);
       } else {
-        y += layoutRich(ctx, parseInline(text.toLocaleUpperCase('fr-FR')), 0, W, y, Math.round(base * 0.95), family, b.align, draw, true) + Math.round(base * 0.15);
+        // petites capitales espacées, filet tramé qui s'efface vers la droite
+        const sz = Math.round(base * 0.92);
+        const up = text.toLocaleUpperCase('fr-FR');
+        const hh = layoutRich(ctx, parseInline(up), 0, W, y, sz, family, 'left', draw, true);
+        if (draw) {
+          ctx.font = `bold ${sz}px ${family}`;
+          const tw = Math.min(W, ctx.measureText(up).width);
+          if (tw < W - 30) toneGradient(ctx, tw + 12, y + Math.round(hh / 2), W - tw - 12, 3, 0.85, 0, false);
+        }
+        y += hh + Math.round(base * 0.3);
       }
       continue;
     }
-    // Encadré : les lignes qui commencent par « > » forment une boîte bordée
+    // Encadré : fond très léger, bordure, barre épaisse à gauche
     if (/^>\s?/.test(line)) {
       const inner = [];
       while (li < lines.length && /^>\s?/.test(lines[li])) { inner.push(lines[li].replace(/^>\s?/, '')); li++; }
       li--;
-      const pad = Math.round(base * 0.45), sub = { text: inner.join('\n'), size: b.size, align: b.align, font: b.font };
-      const ih = renderTextBlock(ctx, sub, W - pad * 2 - 6, false);
+      if (y > 0) y += Math.round(base * 0.35);
+      const pad = Math.round(base * 0.5), bar = Math.max(6, Math.round(base * 0.28)), sub = { text: inner.join('\n'), size: b.size, align: b.align, font: b.font };
+      const iw = W - pad * 2 - bar - 4;
+      const ih = renderTextBlock(ctx, sub, iw, false);
       if (draw) {
-        ctx.save(); ctx.translate(pad + 3, y + pad + 3); renderTextBlock(ctx, sub, W - pad * 2 - 6, true); ctx.restore();
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeRect(1.5, y + 1.5, W - 3, ih + pad * 2 + 3);
+        toneFill(ctx, 0, y, W, ih + pad * 2, 0.06);
+        ctx.fillStyle = '#000'; ctx.fillRect(0, y, bar, ih + pad * 2);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(1, y + 1, W - 2, ih + pad * 2 - 2);
+        ctx.save(); ctx.translate(bar + pad, y + pad); renderTextBlock(ctx, sub, iw, true); ctx.restore();
       }
-      y += ih + pad * 2 + 6 + Math.round(base * 0.3);
+      y += ih + pad * 2 + Math.round(base * 0.55);
+      continue;
+    }
+    // Citation « … » : grands guillemets tramés, texte en italique décalé
+    if (/^[«“"]/.test(line.trim()) && line.trim().length > 20) {
+      const q = Math.round(base * 3.2), ind = Math.round(base * 1.5);
+      if (draw) { ctx.font = `bold ${q}px Georgia, serif`; ctx.fillStyle = toneCss(0.55); ctx.fillText('«', 0, y + Math.round(q * 0.78)); }
+      y += layoutRich(ctx, parseInline(line.trim().replace(/^[«“"]\s*/, '').replace(/\s*[»”"]$/, '')).map(r => Object.assign(r, { i: true })), ind, W - ind, y + Math.round(base * 0.2), base, family, 'left', draw) + Math.round(base * 0.6);
       continue;
     }
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y + Math.round(base * 0.4), W, 2); }
-      y += Math.round(base * 0.9); continue;
+      const mid = y + Math.round(base * 0.75), r = Math.round(base * 0.28);
+      if (draw) {
+        toneGradient(ctx, 0, mid - 1, W / 2 - r * 2, 3, 0, 0.9, false);
+        toneGradient(ctx, W / 2 + r * 2, mid - 1, W / 2 - r * 2, 3, 0.9, 0, false);
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(W / 2, mid - r); ctx.lineTo(W / 2 + r, mid); ctx.lineTo(W / 2, mid + r); ctx.lineTo(W / 2 - r, mid); ctx.fill();
+      }
+      y += Math.round(base * 1.5); continue;
     }
     if ((m = line.match(/^\s*[-*+]\s+\[( |x|X)\]\s+(.*)$/))) {
       const box = Math.round(base * 0.72), ind = box + Math.round(base * 0.45);
@@ -198,7 +237,11 @@ function renderTextBlock(ctx, b, W, draw) {
       const text = isNum ? m[2] : m[1];
       ctx.font = `bold ${base}px ${family}`;
       const ind = Math.round(Math.max(ctx.measureText(isNum ? '00.' : '•').width, base * 0.6) + base * 0.4);
-      if (draw) { ctx.fillStyle = '#000'; ctx.fillText(label, 0, y + Math.round(base * 0.95)); }
+      if (draw) {
+        ctx.fillStyle = '#000';
+        if (isNum) ctx.fillText(label, 0, y + Math.round(base * 0.95));
+        else { const sq = Math.max(5, Math.round(base * 0.28)); ctx.fillRect(Math.round(base * 0.12), y + Math.round(base * 0.5) - (sq >> 1), sq, sq); }
+      }
       y += layoutRich(ctx, parseInline(text), ind, W - ind, y, base, family, 'left', draw) + 2;
       continue;
     }
@@ -426,6 +469,14 @@ async function composeStrip(W) {
 }
 // Couleurs « codées » : rouge = texte atténué à 70 %, bleu = surlignage à 25 %. Converties en trames à l'impression.
 const TONE_COLOR = '#ff0000', HL_COLOR = '#0000ff';
+// Gris libre (0 = blanc, 1 = noir) codé en vert pur : rgb(0, 40 + niveau × 215, 0), tramé à l'impression
+const toneCss = lv => `rgb(0,${Math.round(40 + Math.max(0, Math.min(1, lv)) * 215)},0)`;
+function toneFill(ctx, x, y, w, h, lv) { ctx.fillStyle = toneCss(lv); ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+function toneGradient(ctx, x, y, w, h, from, to, vertical) {
+  const g = vertical ? ctx.createLinearGradient(0, y, 0, y + h) : ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, toneCss(from)); g.addColorStop(1, toneCss(to));
+  ctx.fillStyle = g; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
 function toneThreshold(c) {
   const x = c.getContext('2d', { willReadFrequently: true });
   const id = x.getImageData(0, 0, c.width, c.height), d = id.data, w = c.width;
@@ -434,6 +485,7 @@ function toneThreshold(c) {
     let v;
     if (r > 180 && g < 110 && b < 110) { const xx = p % w, yy = (p / w) | 0; v = BAYER8[(yy & 7) * 8 + (xx & 7)] < 45 ? 0 : 255; }      // 70 %
     else if (b > 180 && r < 110 && g < 110) { const xx = p % w, yy = (p / w) | 0; v = BAYER8[(yy & 7) * 8 + (xx & 7)] < 16 ? 0 : 255; } // 25 %
+    else if (r < 40 && b < 40 && g >= 40) { const xx = p % w, yy = (p / w) | 0; v = BAYER8[(yy & 7) * 8 + (xx & 7)] < (g - 40) / 215 * 64 ? 0 : 255; } // gris libre
     else v = (0.299 * r + 0.587 * g + 0.114 * b) < 150 ? 0 : 255;
     d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
   }

@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070430';
+const APP_VERSION = '202611070433';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -532,7 +532,7 @@ async function pdfToText(file) {
         else md.push(mark + l.t);
         return;
       }
-      if (!para && isBox(l.t)) { para = '\u0000BOX' + l.t; return; }
+      if (isBox(l.t)) { flush(); para = '\u0000BOX' + l.t; return; }
       if (bullet) { flush(); md.push('- ' + l.t.replace(/^([•●▪◦‣\-–]|\d+[.)])\s+/, '')); return; }
       if (prev && gap > Math.max(l.h, prev.h) * 1.7) flush();
       // ligne précédente courte et sans ponctuation finale : vraie fin de ligne (adresse, liste…)
