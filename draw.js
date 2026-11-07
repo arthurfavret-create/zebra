@@ -79,7 +79,8 @@ function openDrawing(opts) {
       return [Math.round((e.clientX - r.left) * W / r.width), Math.round((e.clientY - r.top) * H / r.height), Math.round(pr * 100) / 100];
     };
     // Palme : contact large, ou doigt posé juste avant le stylet → on l'ignore / on retire ce qu'il a tracé
-    const isPalm = e => e.pointerType === 'touch' && ((e.width || 0) > 28 || (e.height || 0) > 28);
+    // (un doigt sur iPad mesure déjà 30 à 50 px de contact : seule une très grande surface compte comme paume)
+    const isPalm = e => e.pointerType === 'touch' && ((e.width || 0) > 80 || (e.height || 0) > 80);
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (e.pointerType === 'pen') {
@@ -94,7 +95,7 @@ function openDrawing(opts) {
       }
       const touchScroll = e.pointerType === 'touch' && (penSeen || handMode);
       if ((handMode && e.pointerType !== 'pen') || touchScroll) {
-        if (!isPalm(e)) scroller = { id: e.pointerId, y: e.clientY, top: stage.scrollTop };
+        scroller = { id: e.pointerId, y: e.clientY, top: stage.scrollTop }; // tout contact du doigt fait défiler
         return;
       }
       if (isPalm(e)) return;

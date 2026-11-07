@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070355';
+const APP_VERSION = '202611070357';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
