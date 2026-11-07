@@ -74,7 +74,7 @@ function openDrawing(opts) {
     function redraw() {
       ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, W, H);
-      strokes.forEach(strokePath);
+      strokes.forEach(s => strokePath(s)); // (forEach passerait l'index comme 2e argument)
       ctx.globalCompositeOperation = 'source-over';
     }
     const pos = e => {
