@@ -83,6 +83,13 @@
   .block.sel { box-shadow:0 0 0 2px var(--c, var(--violet)), var(--shadow); }
   .block[data-type=text] { --c:var(--violet); } .block[data-type=image] { --c:var(--pink); }
   .block[data-type=qr] { --c:var(--blue); } .block[data-type=sep] { --c:var(--yellow); } .block[data-type=space] { --c:var(--mint); }
+  .block { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  .block:not(.sel) textarea, .block:not(.sel) input { pointer-events:none; }
+  .block.sel textarea, .block.sel input { -webkit-user-select:text; user-select:text; }
+  .block.lifting { position:fixed; z-index:60; margin:0; pointer-events:none; animation:none; transform:scale(1.03) rotate(-1.2deg);
+    box-shadow:0 0 0 2px var(--c), 0 24px 48px rgba(26,24,35,.28); transition:transform .15s; }
+  .drop-ph { border:2px dashed var(--pink); border-radius:20px; margin:12px 0; background:rgba(255,79,139,.06); }
+  .hint-move { text-align:center; color:var(--mute); font-size:13px; margin:10px 0 0; }
   .tools { position:absolute; right:10px; top:-16px; display:none; gap:4px; background:var(--ink); padding:4px; border-radius:12px; box-shadow:var(--shadow); z-index:2; }
   .block.sel .tools { display:flex; }
   .tools button { border:0; background:transparent; color:var(--bg); width:34px; height:30px; border-radius:8px; font-size:15px; }
@@ -268,6 +275,7 @@
       <button class="add" data-add="sep"><i style="--c:var(--yellow)">✂︎</i>Trait</button>
       <button class="add" data-add="space"><i style="--c:var(--mint)">↕</i>Espace</button>
     </div>
+    <p class="hint-move">Astuce : appui long sur un bloc pour le déplacer</p>
     <div class="drop" id="drop" contenteditable="true" inputmode="none" spellcheck="false">
       <b>Colle ou glisse ici</b> une photo, un PDF, un fichier .md ou du texte
     </div>

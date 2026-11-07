@@ -115,10 +115,8 @@ const SIZE_OPTS = [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']];
 // ---------- Cartes ----------
 function card(b) {
   const c = h('div', { class: 'block' + (b.id === selectedId ? ' sel' : ''), 'data-type': b.type, 'data-id': b.id });
-  c.addEventListener('pointerdown', () => select(b.id));
+  c.addEventListener('pointerdown', e => pressStart(e, b, c));
   c.append(h('div', { class: 'tools' },
-    h('button', { title: 'Monter', onclick: e => { e.stopPropagation(); move(b, -1); } }, '↑'),
-    h('button', { title: 'Descendre', onclick: e => { e.stopPropagation(); move(b, 1); } }, '↓'),
     h('button', { title: 'Dupliquer', onclick: e => { e.stopPropagation(); duplicate(b); } }, '⧉'),
     h('button', { title: 'Supprimer', onclick: e => { e.stopPropagation(); remove(b); } }, '🗑')));
   const more = h('div', { class: 'more' });
@@ -234,6 +232,79 @@ function sepCanvas(style) {
   drawSep(x, style, W, 0, true);
   cv.style.cssText = 'filter:var(--sepfilter, none)';
   return cv;
+}
+
+
+// ---------- Appui long : déplacer un bloc ----------
+let press = null, drag = null;
+function pressStart(e, b, c) {
+  if (e.button > 0 || drag) return;
+  if (e.target.closest('.tools, .more, button, input[type=range]')) return;
+  const wasSel = selectedId === b.id;
+  // dans un bloc déjà sélectionné, le texte se modifie normalement
+  if (wasSel && e.target.closest('textarea, input')) return;
+  press = { b, c, x: e.clientX, y: e.clientY, id: e.pointerId, wasSel,
+    timer: setTimeout(() => beginDrag(), 420) };
+}
+function pressEnd(e) {
+  if (drag) { endDrag(); return; }
+  if (!press) return;
+  clearTimeout(press.timer);
+  const { b, c, wasSel } = press; press = null;
+  if (e.type === 'pointercancel') return;
+  select(b.id);
+  if (!wasSel) { // premier toucher : on ouvre directement le champ principal
+    const f = c.querySelector(b.type === 'list' ? 'textarea' : 'textarea, input.field, input.title');
+    if (f && b.type !== 'list') setTimeout(() => { f.focus(); try { f.setSelectionRange(f.value.length, f.value.length); } catch (_) {} }, 30);
+  }
+}
+document.addEventListener('pointermove', e => {
+  if (press && !drag && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; return; }
+  if (drag) moveDrag(e.clientY);
+});
+document.addEventListener('pointerup', pressEnd);
+document.addEventListener('pointercancel', pressEnd);
+document.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+function beginDrag() {
+  if (!press) return;
+  const { b, c, y } = press; press = null;
+  if (document.activeElement) document.activeElement.blur();
+  select(null);
+  const r = c.getBoundingClientRect();
+  const ph = h('div', { class: 'drop-ph', style: `height:${r.height}px` });
+  c.after(ph);
+  c.classList.add('lifting');
+  Object.assign(c.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px' });
+  drag = { b, c, ph, offset: y - r.top, lastY: y };
+  if (navigator.vibrate) navigator.vibrate(15);
+  autoScroll();
+}
+function moveDrag(y) {
+  drag.lastY = y;
+  drag.c.style.top = (y - drag.offset) + 'px';
+  const others = [...document.querySelectorAll('#blocks .block:not(.lifting)')];
+  const before = others.find(o => { const r = o.getBoundingClientRect(); return y < r.top + r.height / 2; });
+  if (before) { if (drag.ph.nextSibling !== before) before.before(drag.ph); }
+  else if (others.length) { const last = others[others.length - 1]; if (last.nextSibling !== drag.ph) last.after(drag.ph); }
+}
+function autoScroll() {
+  if (!drag) return;
+  const y = drag.lastY, H = window.innerHeight, edge = 90;
+  if (y < edge) window.scrollBy(0, -Math.ceil((edge - y) / 6));
+  else if (y > H - edge - 80) window.scrollBy(0, Math.ceil((y - (H - edge - 80)) / 6));
+  if (drag) { moveDrag(drag.lastY); requestAnimationFrame(autoScroll); }
+}
+function endDrag() {
+  const { b, c, ph } = drag; drag = null;
+  // nouvel ordre = ordre des cartes dans la page, le bloc déplacé à la place du repère
+  const ids = [];
+  [...document.getElementById('blocks').children].forEach(el => {
+    if (el === ph) ids.push(b.id);
+    else if (el.classList.contains('block') && el !== c) ids.push(+el.dataset.id);
+  });
+  state.blocks = ids.map(id => state.blocks.find(x => x.id === id)).filter(Boolean);
+  selectedId = b.id;
+  renderBlocks(); changed();
 }
 
 // ---------- Liste : rangement intelligent ----------
