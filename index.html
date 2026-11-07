@@ -159,8 +159,16 @@
 
   .prep { display:flex; align-items:center; gap:12px; justify-content:space-between; background:linear-gradient(120deg, rgba(255,201,60,.22), rgba(255,79,139,.14)); border-radius:18px; padding:12px 14px; margin:14px 0 2px; }
   .prep b { font-family:var(--display); font-size:17px; }
+  .prep .magic { white-space:nowrap; flex:none; }
   .prep .small { font-size:13px; color:var(--mute); margin-top:2px; }
   .prep.done { background:rgba(47,211,154,.14); font-weight:700; font-size:14px; }
+  .fmts { display:flex; gap:8px; overflow-x:auto; padding:6px 0 2px; scrollbar-width:none; }
+  .fmts::-webkit-scrollbar { display:none; }
+  .fmt-chip { flex:none; display:flex; align-items:center; gap:8px; border:2px solid transparent; background:var(--bg); border-radius:12px; padding:6px 12px 6px 8px; font-weight:700; font-size:14px; }
+  .fmt-chip.on { border-color:var(--pink); }
+  .fmt-chip i { display:block; border:2px solid currentColor; border-radius:4px; }
+  .numf { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--mute); font-weight:600; }
+  .numf input { width:64px; border:0; background:var(--bg); border-radius:10px; padding:8px; font-size:16px; font-weight:700; text-align:center; color:var(--ink); }
   /* ---------- Claude ---------- */
   .ai-btn { border:0; border-radius:12px; height:40px; padding:0 14px; font-weight:700; color:#fff; background:linear-gradient(120deg, #D97757, var(--pink)); }
   #aiSheet textarea { width:100%; min-height:150px; border:0; outline:0; background:var(--bg); border-radius:16px; padding:14px; font-size:17px; line-height:1.45; resize:vertical; }
@@ -333,8 +341,8 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070217"></script>
-<script src="label.js?v=202611070217"></script>
-<script src="app.js?v=202611070217"></script>
+<script src="engine.js?v=202611070226"></script>
+<script src="label.js?v=202611070226"></script>
+<script src="app.js?v=202611070226"></script>
 </body>
 </html>

@@ -90,7 +90,8 @@ function fitStack(ctx, T, L, Wt, Ht, family) {
 function composeLabel(L, opts) {
   opts = opts || {};
   const land = L.orient === 'land';
-  const W = land ? DYMO_H : PW, H = land ? PW : DYMO_H;
+  const d = labelDims();
+  const W = land ? d.hD : d.wD, H = land ? d.wD : d.hD;
   const view = document.createElement('canvas'); view.width = W; view.height = H;
   const ctx = view.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
@@ -98,7 +99,8 @@ function composeLabel(L, opts) {
   const T = labelTexts(L);
   drawFrame(ctx, L.frame, W, H);
 
-  const pad = DYMO_INSET + (L.frame === 'none' ? 12 : L.frame === 'double' ? 26 : 22);
+  const small = Math.min(W, H) < 240;
+  const pad = DYMO_INSET + (L.frame === 'none' ? (small ? 6 : 12) : L.frame === 'double' ? (small ? 18 : 26) : (small ? 14 : 22));
   let ax = pad, ay = pad, aw = W - 2 * pad, ah = H - 2 * pad;
 
   // QR : à droite si couchée, en bas si debout
@@ -140,16 +142,16 @@ function composeLabel(L, opts) {
 
   if (opts.viewOnly) return { view, fit };
   // Page d'impression : 384 × 807, pivotée si l'étiquette est couchée
-  const print = document.createElement('canvas'); print.width = PW; print.height = DYMO_H;
-  const p = print.getContext('2d'); p.fillStyle = '#fff'; p.fillRect(0, 0, PW, DYMO_H);
+  const print = document.createElement('canvas'); print.width = PW; print.height = d.hD;
+  const p = print.getContext('2d'); p.fillStyle = '#fff'; p.fillRect(0, 0, PW, d.hD);
   if (land) {
-    if (L.flip) { p.translate(0, DYMO_H); p.rotate(-Math.PI / 2); }
-    else { p.translate(PW, 0); p.rotate(Math.PI / 2); }
-    p.drawImage(view, 0, 0);
+    if (L.flip) { p.translate(d.xOff, d.hD); p.rotate(-Math.PI / 2); }
+    else { p.translate(d.xOff + d.wD, 0); p.rotate(Math.PI / 2); }
   } else {
-    if (L.flip) { p.translate(PW, DYMO_H); p.rotate(Math.PI); }
-    p.drawImage(view, 0, 0);
+    if (L.flip) { p.translate(d.xOff + d.wD, d.hD); p.rotate(Math.PI); }
+    else p.translate(d.xOff, 0);
   }
+  p.drawImage(view, 0, 0);
   p.setTransform(1, 0, 0, 1, 0, 0);
   threshold(print);
   return { view, print, fit };

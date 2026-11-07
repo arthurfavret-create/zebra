@@ -8,6 +8,20 @@ const TPE_SEGMENT = 1600;       // hauteur max d'un format ZPL (on enchaîne plu
 const DYMO_H = 807;             // hauteur étiquette 101 mm
 const DYMO_LL = 848;            // pas 106 mm (étiquette 101 mm + espace 5 mm) — validé à l'impression
 const DYMO_LH = 41;             // décalage de l'espace de 5 mm
+// Formats d'étiquettes (largeur × longueur en mm, espace entre deux étiquettes)
+const LABEL_SIZES = [
+  { w: 54, h: 101, gap: 5 }, { w: 54, h: 70, gap: 3 }, { w: 36, h: 89, gap: 3 },
+  { w: 28, h: 89, gap: 3 }, { w: 32, h: 57, gap: 3 }, { w: 25, h: 54, gap: 3 },
+];
+function labelFmt() { const f = state.labelFmt || {}; return { w: +f.w || 54, h: +f.h || 101, gap: f.gap != null ? +f.gap : 5 }; }
+// Dimensions en points : largeur imprimée (48 mm max, centrée), hauteur, pas (^LL) et décalage (^LH)
+function labelDims() {
+  const f = labelFmt();
+  const wD = f.w >= 50 ? PW : Math.min(PW, Math.round((f.w - 2) * 203 / 25.4));
+  const hD = Math.round(f.h * 203 / 25.4);
+  const LL = Math.round((f.h + f.gap) * 8);
+  return { wD, hD, xOff: Math.round((PW - wD) / 2), LL, LH: Math.max(0, LL - hD) };
+}
 const DYMO_INSET = 10;          // zone utile x 10..374, y 10..797
 const BLOCK_GAP = 14;
 const MAX_COPIES = 50;
@@ -283,8 +297,8 @@ function drawSep(ctx, style, W, y, draw) {
 // ---------- Composition ----------
 function contentGeometry() {
   if (state.mode === 'dymo') {
-    const inset = state.frame ? DYMO_INSET + 14 : DYMO_INSET;
-    return { W: PW - inset * 2, x: inset, pageH: DYMO_H - inset * 2, y: inset };
+    const d = labelDims(), inset = state.frame ? DYMO_INSET + 14 : DYMO_INSET;
+    return { W: d.wD - inset * 2, x: d.xOff + inset, pageH: d.hD - inset * 2, y: inset };
   }
   return { W: PW - TPE_SIDE * 2, x: TPE_SIDE };
 }
@@ -397,10 +411,11 @@ async function compose() {
   const pages = [];
   if (state.mode === 'dymo') {
     for (const [a, z] of slice(strip, g.pageH, strip._bounds)) {
-      const p = document.createElement('canvas'); p.width = PW; p.height = DYMO_H;
-      const x = p.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, PW, DYMO_H);
+      const d = labelDims();
+      const p = document.createElement('canvas'); p.width = PW; p.height = d.hD;
+      const x = p.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, PW, d.hD);
       x.drawImage(strip, 0, a, g.W, z - a, g.x, g.y, g.W, z - a);
-      if (state.frame) { x.strokeStyle = '#000'; x.lineWidth = 3; x.strokeRect(DYMO_INSET + 1.5, DYMO_INSET + 1.5, PW - DYMO_INSET * 2 - 3, DYMO_H - DYMO_INSET * 2 - 3); }
+      if (state.frame) { x.strokeStyle = '#000'; x.lineWidth = 3; x.strokeRect(d.xOff + DYMO_INSET + 1.5, DYMO_INSET + 1.5, d.wD - DYMO_INSET * 2 - 3, d.hD - DYMO_INSET * 2 - 3); }
       threshold(p);
       pages.push(p);
     }
@@ -462,9 +477,10 @@ function canvasToGFA(c, y0, y1) {
 function buildZpl(pages) {
   const parts = [];
   if (state.mode === 'dymo') {
+    const d = labelDims();
     pages.forEach(p => {
       const g = canvasToGFA(p, 0, p.height);
-      parts.push(`^XA\n^CI28\n^MNN\n^PW${PW}\n^LL${DYMO_LL}\n^LH0,${DYMO_LH}\n^FO0,0${g.zpl}^FS\n^PQ1\n^XZ`);
+      parts.push(`^XA\n^CI28\n^MNN\n^PW${PW}\n^LL${d.LL}\n^LH0,${d.LH}\n^FO0,0${g.zpl}^FS\n^PQ1\n^XZ`);
     });
   } else {
     const p = pages[0];

@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070217';
+const APP_VERSION = '202611070226';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -76,7 +76,7 @@ async function renderPreview() {
   let black = 0, px = 0;
   pages.forEach(p => { const d = p.getContext('2d').getImageData(0, 0, p.width, p.height).data; for (let i = 0; i < d.length; i += 32) { px++; if (d[i] < 128) black++; } });
   let info = isLabelTpl()
-    ? (state.label.orient === 'land' ? 'Étiquette couchée · 101 × 48 mm' : 'Étiquette debout · 48 × 101 mm')
+    ? (state.label.orient === 'land' ? `Étiquette couchée · ${labelFmt().h} × ${labelFmt().w} mm` : `Étiquette debout · ${labelFmt().w} × ${labelFmt().h} mm`)
     : state.mode === 'dymo'
     ? `${pages.length} étiquette${pages.length > 1 ? 's' : ''}`
     : `Ticket de ${(pages[0].height / 80).toFixed(1).replace('.', ',')} cm` + (state.blocks.some(b => b.type === 'list') && pages[0].height <= TPE_LIST_MIN ? ' (minimum liste)' : '');
@@ -678,9 +678,38 @@ function updateTip(fit) {
   else { icon = '⚠️'; text = `Titre très petit (<b>${mm || 1} mm</b>). Raccourcis le texte${L.qrOn ? ' ou retire le QR' : ''}.`; }
   tipBox.innerHTML = `<span style="font-size:20px">${icon}</span><span>${text}</span>`;
 }
+function setFmt(f) {
+  state.labelFmt = { w: f.w, h: f.h, gap: f.gap };
+  prepared = false; try { sessionStorage.removeItem('zebra-prepared'); } catch (_) {}
+  syncTop(); renderBlocks(); changed();
+}
+function formatPicker() {
+  const cur = labelFmt();
+  const isPreset = LABEL_SIZES.some(s => s.w === cur.w && s.h === cur.h);
+  const wrap = h('div', { class: 'lcard', style: 'padding:12px 14px' });
+  const row = h('div', { class: 'fmts' });
+  LABEL_SIZES.forEach(s => {
+    const on = s.w === cur.w && s.h === cur.h;
+    const ratio = s.w / s.h;
+    row.append(h('button', { class: 'fmt-chip' + (on ? ' on' : ''), onclick: () => setFmt(on ? cur : s) },
+      h('i', { style: `width:${Math.round(14 + 20 * ratio)}px;height:30px` }), `${s.w} × ${s.h}`));
+  });
+  const custom = h('button', { class: 'fmt-chip' + (isPreset ? '' : ' on'), onclick: () => { extra.style.display = extra.style.display === 'none' ? '' : 'none'; } }, h('i', { style: 'width:22px;height:30px;border-style:dashed' }), 'Autre');
+  row.append(custom);
+  const num = (k, label, min, max, step) => h('label', { class: 'numf' }, label,
+    h('input', { type: 'number', inputmode: 'decimal', min, max, step, value: cur[k], onchange: e => { const v = Math.max(min, Math.min(max, +String(e.target.value).replace(',', '.') || cur[k])); setFmt(Object.assign({}, labelFmt(), { [k]: v })); } }), 'mm');
+  const extra = h('div', { class: 'lrow', style: isPreset ? 'display:none' : '' },
+    num('w', 'Largeur', 15, 58, 1), num('h', 'Longueur', 15, 300, 1), num('gap', 'Espace', 0, 10, 0.5));
+  const d = labelDims();
+  wrap.append(h('div', { class: 'lrow', style: 'padding-top:0' }, h('span', { class: 'lab' }, 'Format'),
+    h('span', { style: 'font-size:13px;color:var(--mute)' }, `pas de ${pitchMm()} mm · zone imprimée ${(d.wD / 8).toFixed(0)} mm de large`)),
+    row, extra);
+  return wrap;
+}
 function renderLabelEditor() {
   const box = $('labelEditor'); box.innerHTML = '';
   const L = state.label;
+  box.append(formatPicker());
   // modèles
   const tpls = h('div', { class: 'tpls' });
   Object.entries(LABEL_TPLS).forEach(([k, t]) => {
@@ -794,7 +823,8 @@ $('aiBg').addEventListener('click', e => { if (e.target === $('aiBg')) $('aiBg')
 // ---------- Préparer la Zebra pour les étiquettes ----------
 // Une avance « à vide » de 106 mm : l'imprimante retient cette longueur et, à la fermeture du capot,
 // fera sortir exactement une étiquette. Elle est alors prête, la découpe tombe entre deux étiquettes.
-const PREP_ZPL = `^XA\n^MNN\n^PW${PW}\n^LL${DYMO_LL}\n^LH0,0\n^FO0,0^GB${PW},1,1,W^FS\n^PQ1\n^XZ\n`;
+const prepZpl = () => `^XA\n^MNN\n^PW${PW}\n^LL${labelDims().LL}\n^LH0,0\n^FO0,0^GB${PW},1,1,W^FS\n^PQ1\n^XZ\n`;
+const pitchMm = () => (labelDims().LL / 8).toFixed(1).replace('.0', '').replace('.', ',');
 let prepared = false;
 try { prepared = sessionStorage.getItem('zebra-prepared') === '1'; } catch (_) {}
 async function prepareLabels() {
@@ -802,8 +832,8 @@ async function prepareLabels() {
   printing = true;
   try {
     if (!(await ensureConnected())) return;
-    toast('Avance de 106 mm…');
-    await send(PREP_ZPL, () => {}, 20);
+    toast(`Avance de ${pitchMm()} mm…`);
+    await send(prepZpl(), () => {}, 20);
     prepared = true; try { sessionStorage.setItem('zebra-prepared', '1'); } catch (_) {}
     renderPrepBanner();
     showPrepSteps();
@@ -815,7 +845,7 @@ function showPrepSteps() {
   const step = (n, t) => h('div', { class: 'result', style: 'display:flex;gap:12px;align-items:flex-start;margin:10px 0' },
     h('b', { style: 'font-family:var(--display);font-size:22px;color:var(--pink);line-height:1' }, n), h('div', { style: 'flex:1;font-size:16px' }, t));
   sheet.append(h('h3', {}, '🏷️ La Zebra connaît la taille des étiquettes'),
-    step('1', 'Ouvre le capot et mets le rouleau d\'étiquettes DYMO.'),
+    step('1', `Ouvre le capot et mets le rouleau d'étiquettes ${labelFmt().w} × ${labelFmt().h} mm.`),
     step('2', 'Cale la sortie pile entre deux étiquettes, au niveau de la barre de découpe.'),
     step('3', 'Ferme le capot : une étiquette vide sort. C\'est prêt, chaque impression tombera pile sur une étiquette.'),
     h('button', { class: 'go', style: 'margin-top:8px', onclick: () => $('aiBg').classList.remove('open') }, 'C\'est fait'));
@@ -831,7 +861,7 @@ function renderPrepBanner() {
       h('button', { class: 'mini-chip', onclick: prepareLabels }, 'Refaire')));
   } else {
     box.append(h('div', { class: 'prep' },
-      h('div', {}, h('b', {}, 'Papier à étiquettes ?'), h('div', { class: 'small' }, 'Indique d\'abord la taille à la Zebra (avance de 106 mm à vide), puis charge le rouleau.')),
+      h('div', {}, h('b', {}, 'Papier à étiquettes ?'), h('div', { class: 'small' }, `Indique d'abord la taille à la Zebra (avance de ${pitchMm()} mm à vide), puis charge le rouleau.`)),
       h('button', { class: 'magic', onclick: prepareLabels }, 'Préparer la Zebra')));
   }
 }
@@ -839,6 +869,7 @@ function renderPrepBanner() {
 // ---------- Réglages globaux ----------
 function syncTop() {
   document.querySelectorAll('.mode').forEach(m => m.classList.toggle('active', m.dataset.mode === state.mode));
+  const lf = labelFmt(); const ms = document.querySelector('.mode[data-mode=dymo] small'); if (ms) ms.textContent = `${lf.w} × ${lf.h} mm`;
   const f = $('fonts'); f.innerHTML = '';
   Object.entries(FONT_CHIPS).forEach(([k, label]) => {
     f.append(h('button', { class: 'chip' + (state.font === k ? ' active' : ''), onclick: () => { state.font = k; syncTop(); changed(); refreshThumbs(); document.fonts.load(`bold 40px ${FONTS[k].css}`).then(() => { if (state.mode === 'dymo') renderLabelEditor(); changed(); }); } },
