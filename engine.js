@@ -392,18 +392,101 @@ function getImage(b) {
   });
 }
 
-// ---------- Rendu : code-barres (Code 128) ----------
-function barcodeCanvas(b, W) {
-  const text = fillVars(b.text || '').trim();
-  if (!text || typeof JsBarcode !== 'function') return null;
-  const hgt = { S: 50, M: 80, L: 120 }[b.size] || 80;
-  const c = document.createElement('canvas');
-  for (const mw of [3, 2, 1]) { // barres les plus larges possibles qui tiennent dans la largeur
-    try { JsBarcode(c, text, { format: 'CODE128', width: mw, height: hgt, displayValue: !!b.showText, fontSize: 22, font: 'monospace', textMargin: 4, margin: 0, background: '#ffffff', lineColor: '#000000' }); }
-    catch (_) { return null; }
-    if (c.width <= W) break;
+// ---------- Rendu : sommaire (texte à gauche, numéro de page à droite) ----------
+// Une ligne = « Nom 12 », « Nom ..... 1-2 », « Nom ; 12 ». « # Rubrique » = intertitre (avec « p. » à droite).
+function parseTocLine(raw) {
+  const line = raw.replace(/\s+/g, ' ').trim();
+  if (!line) return null;
+  if (/^#+\s*/.test(line)) return { head: line.replace(/^#+\s*/, '').trim() };
+  const m = line.match(/^(.*?)[\s.…·_:;|,\-–—]*\s*(?:p\.?\s*)?(\d{1,4}(?:\s*[-–\/]\s*\d{1,4})?)$/i);
+  if (m && m[1].trim()) return { name: m[1].replace(/[\s.…·_:;|,\-–—]+$/, '').trim(), page: m[2].replace(/\s+/g, '').replace(/[–\/]/, '-') };
+  return { name: line.replace(/[\s.…·_:;|,\-–—]+$/, '').trim(), page: '' };
+}
+function tocGroups(b) {
+  const groups = []; let cur = { head: '', rows: [] };
+  (b.items || '').split('\n').forEach(l => {
+    const r = parseTocLine(fillVars(l)); if (!r) return;
+    if (r.head != null) { if (cur.head || cur.rows.length) groups.push(cur); cur = { head: r.head, rows: [] }; }
+    else cur.rows.push(r);
+  });
+  groups.push(cur);
+  if (b.sort) groups.forEach(g => g.rows.sort((a, c) => a.name.localeCompare(c.name, 'fr', { sensitivity: 'base', numeric: true })));
+  if (groups.length > 1 && !groups[0].head && !groups[0].rows.length) groups.shift();
+  return groups;
+}
+function tocHasContent(b) { return !!((b.title || '').trim() || (b.items || '').trim() || (+b.blank || 0) > 0); }
+function renderTocBlock(ctx, b, W, draw) {
+  const fk = fontKey(b.font || state.font), F = FONTS[fk], family = F.css;
+  const base = SIZES[b.size] || SIZES.M;
+  const rowH = Math.round(base * 1.75), asc = Math.round(base * 1.15);
+  const groups = tocGroups(b);
+  const font = (w, sz) => `${w} ${sz}px ${family}`;
+  // colonne des numéros : assez large pour le plus long numéro (et au moins « 00-00 » si lignes vides)
+  ctx.font = font(F.n || 400, base);
+  let numW = ctx.measureText(+b.blank ? '00-00' : '00').width;
+  groups.forEach(g => g.rows.forEach(r => { numW = Math.max(numW, ctx.measureText(r.page).width); }));
+  numW = Math.ceil(numW);
+  const nameMax = W - numW - Math.round(base * 0.9);
+  const leader = b.leader || 'dots';
+  let y = 0;
+  const title = fillVars(b.title || '').trim();
+  if (title) {
+    y += layoutRich(ctx, [{ t: title, b: true }], 0, W, y, Math.round(base * 1.5), family, 'center', draw, true);
+    y += Math.round(base * 0.25);
+    if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(Math.round(W * 0.08), y, Math.round(W * 0.84), 2); }
+    y += 2 + Math.round(base * 0.7);
   }
-  return c.width <= W ? c : null;
+  const wrap = text => { // coupe le nom sur plusieurs lignes si besoin
+    const words = text.split(' '), lines = []; let cur = '';
+    words.forEach(w => { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > nameMax && cur) { lines.push(cur); cur = w; } else cur = t; });
+    if (cur) lines.push(cur); return lines.length ? lines : [''];
+  };
+  const drawLeader = (x1, x2, by) => {
+    if (!draw || x2 - x1 < 8) return;
+    ctx.fillStyle = '#000';
+    if (leader === 'dots') { for (let x = Math.ceil(x1 / 7) * 7; x < x2; x += 7) ctx.fillRect(x, by - 2, 2, 2); }
+    else if (leader === 'line') ctx.fillRect(x1, by - 1, x2 - x1, 1);
+  };
+  groups.forEach((g, gi) => {
+    if (g.head) {
+      if (gi > 0 || title) y += Math.round(base * (gi > 0 ? 0.9 : 0.1));
+      const hs = Math.round(base * 1.1);
+      if (draw) {
+        ctx.fillStyle = '#000'; ctx.font = font(F.b || 700, hs);
+        ctx.fillText(g.head.toLocaleUpperCase('fr'), 0, y + Math.round(hs * 0.95));
+        ctx.font = font(F.n || 400, Math.round(base * 0.7)); ctx.textAlign = 'right';
+        ctx.fillText('p.', W, y + Math.round(hs * 0.95)); ctx.textAlign = 'left';
+      }
+      y += Math.round(hs * 1.2);
+      if (draw) ctx.fillRect(0, y, W, 3);
+      y += 3 + Math.round(base * 0.35);
+    }
+    ctx.font = font(F.n || 400, base);
+    g.rows.forEach(r => {
+      const lines = wrap(r.name);
+      lines.forEach((t, i) => {
+        const by = y + asc;
+        if (draw) { ctx.fillStyle = '#000'; ctx.font = font(F.n || 400, base); ctx.fillText(t, 0, by); }
+        if (i === lines.length - 1) {
+          const tw = ctx.measureText(t).width, pw = ctx.measureText(r.page).width;
+          drawLeader(Math.ceil(tw + base * 0.35), Math.floor(W - (r.page ? pw : numW) - base * 0.35), by);
+          if (draw && r.page) { ctx.textAlign = 'right'; ctx.fillText(r.page, W, by); ctx.textAlign = 'left'; }
+          y += rowH;
+        } else y += Math.round(base * 1.25);
+      });
+    });
+  });
+  // lignes vides à compléter à la main (nom + numéro)
+  const blank = Math.max(0, Math.min(40, +b.blank || 0));
+  if (blank) {
+    const bh = Math.round(base * 2.1), col = W - numW - Math.round(base * 0.5);
+    for (let i = 0; i < blank; i++) {
+      y += bh;
+      if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y - 3, col - Math.round(base * 0.5), 2); ctx.fillRect(col, y - 3, W - col, 2); }
+    }
+    y += Math.round(base * 0.3);
+  }
+  return Math.max(y, 1);
 }
 
 // ---------- Rendu : QR, séparateurs ----------
@@ -470,7 +553,7 @@ async function composeStrip(W) {
       if (b.caption) h += layoutRich(meas, parseInline(fillVars(b.caption)), 0, W, 0, SIZES.S, FONTS[fontKey(state.font)].css, 'center', false) + 4;
       parts.push({ b, h, c });
     }
-    else if (b.type === 'barcode') { const c = barcodeCanvas(b, W); if (c) parts.push({ b, h: c.height, c }); }
+    else if (b.type === 'toc') { if (!tocHasContent(b)) continue; parts.push({ b, h: renderTocBlock(meas, b, W, false) }); }
     else if (b.type === 'sep') parts.push({ b, h: drawSep(meas, b.style, W, 0, false) });
     else if (b.type === 'space') parts.push({ b, h: Math.max(4, +b.h || 40) });
   }
@@ -493,7 +576,7 @@ async function composeStrip(W) {
       ctx.drawImage(p.c, Math.round((W - p.c.width) / 2), 0);
       if (b.caption) layoutRich(ctx, parseInline(fillVars(b.caption)), 0, W, p.c.height + 4, SIZES.S, FONTS[fontKey(state.font)].css, 'center', true);
     }
-    else if (b.type === 'barcode') ctx.drawImage(p.c, Math.round((W - p.c.width) / 2), 0);
+    else if (b.type === 'toc') renderTocBlock(ctx, b, W, true);
     else if (b.type === 'sep') drawSep(ctx, b.style, W, 0, true);
     ctx.restore();
     y += p.h + gapOf(p);

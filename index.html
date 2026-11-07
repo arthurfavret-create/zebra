@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#FFF6EA">
 <title>Zebra Studio</title>
-<link rel="stylesheet" href="fonts.css?v=202611071444">
+<link rel="stylesheet" href="fonts.css?v=202611080047">
 <style>
   :root {
     --bg:#FFF6EA; --card:#FFFFFF; --ink:#1A1823; --mute:#8A8494; --line:#EFE6D8;
@@ -217,9 +217,14 @@
 
   /* ---------- Ajout ---------- */
   .adds { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:18px; } /* 9 outils = 3 × 3 */
-  .bcview { display:flex; justify-content:center; background:#fff; border-radius:12px; padding:10px; margin-top:8px; min-height:40px; align-items:center; }
-  .bcview canvas { max-width:100%; image-rendering:pixelated; }
-  .block[data-type=barcode] { --c:#555; }
+  .block[data-type=toc] { --c:#C2410C; }
+  .tocview { margin:2px 0 0; font-size:16px; }
+  .tocview .r { display:flex; align-items:baseline; gap:6px; padding:2px 0; }
+  .tocview .r .n { flex:none; max-width:75%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tocview .r .d { flex:1; border-bottom:2px dotted rgba(0,0,0,.35); transform:translateY(-4px); }
+  .tocview .r .p { flex:none; font-variant-numeric:tabular-nums; }
+  .tocview .r.miss .p { color:var(--pink); }
+  .tocview .h { font-weight:800; letter-spacing:.06em; text-transform:uppercase; border-bottom:2px solid var(--ink); margin:6px 0 4px; display:flex; justify-content:space-between; }
   .block[data-type=list] { --c:var(--orange); }
   .block .title { width:100%; border:0; outline:0; background:transparent; font-family:var(--display); font-weight:800; font-size:22px; padding:0 0 6px; }
   .block .title::placeholder { color:var(--mute); font-weight:700; }
@@ -322,9 +327,9 @@
       <button class="add" data-add="list"><i style="--c:var(--orange)">☑︎</i>Liste</button>
       <button class="add" data-add="file"><i style="--c:var(--pink)">＋</i>Photo / fichier</button>
       <button class="add" data-add="draw"><i style="--c:#111;font-size:20px">✏️</i>Dessin</button>
+      <button class="add" data-add="toc"><i style="--c:#C2410C;font-size:15px;font-weight:800">p.12</i>Sommaire</button>
       <button class="add" data-add="paste"><i style="--c:#5B6CFF">⎘</i>Coller</button>
       <button class="add" data-add="qr"><i style="--c:var(--blue)">▦</i>QR code</button>
-      <button class="add" data-add="barcode"><i style="--c:#111;font-size:18px;letter-spacing:-1px">▍▏▍</i>Code-barres</button>
       <button class="add" data-add="sep"><i style="--c:var(--yellow)">✂︎</i>Trait</button>
       <button class="add" data-add="space"><i style="--c:var(--mint)">↕</i>Espace</button>
     </div>
@@ -380,10 +385,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="lib/JsBarcode.code128.min.js"></script>
-<script src="engine.js?v=202611071444"></script>
-<script src="draw.js?v=202611071444"></script>
-<script src="label.js?v=202611071444"></script>
-<script src="app.js?v=202611071444"></script>
+<script src="engine.js?v=202611080047"></script>
+<script src="draw.js?v=202611080047"></script>
+<script src="label.js?v=202611080047"></script>
+<script src="app.js?v=202611080047"></script>
 </body>
 </html>

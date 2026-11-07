@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611071444';
+const APP_VERSION = '202611080047';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -65,7 +65,7 @@ function save() { try { localStorage.setItem('zebra-studio-v2', JSON.stringify(s
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem('zebra-studio-v2') || localStorage.getItem('zebra-studio') || 'null');
-    if (s && Array.isArray(s.blocks)) { state = Object.assign(state, s); state.label = Object.assign(defaultLabel(), s.label || {}); state.blocks.forEach(b => b.id = nextId++); return true; }
+    if (s && Array.isArray(s.blocks)) { s.blocks = s.blocks.filter(b => b && b.type !== 'barcode'); state = Object.assign(state, s); state.label = Object.assign(defaultLabel(), s.label || {}); state.blocks.forEach(b => b.id = nextId++); return true; }
   } catch (_) {}
   return false;
 }
@@ -75,7 +75,7 @@ function newBlock(type, props) {
     list:  { title: '', items: '', size: 'M', box: 'square' },
     image: { src: '', render: 'photo', bright: 0, width: 100 },
     qr:    { text: '', size: 'M', caption: '' },
-    barcode: { text: '', size: 'M', showText: true },
+    toc:   { title: '', items: '', size: 'M', leader: 'dots', sort: true, blank: 4 },
     sep:   { style: 'stars' },
     space: { h: 60 },
   }[type];
@@ -254,13 +254,40 @@ function card(b) {
       h('input', { class: 'field', value: b.caption, placeholder: 'Légende sous le QR (facultatif)', oninput: e => set('caption', e.target.value) }));
   }
 
-  else if (b.type === 'barcode') {
-    const pv = h('div', { class: 'bcview' });
-    const draw = () => { const c = barcodeCanvas(b, contentGeometry().W); pv.innerHTML = ''; if (c) pv.append(c); else pv.append(h('span', { style: 'color:var(--mute);font-size:14px' }, b.text ? 'Texte trop long pour la largeur' : 'Le code-barres apparaîtra ici')); };
-    draw();
-    c.append(h('input', { class: 'field', value: b.text, placeholder: 'Numéro, référence, code…', style: 'font-size:17px;background:transparent;padding:6px 0;width:100%', oninput: e => { set('text', e.target.value); draw(); } }), pv);
-    const tg = h('button', { class: 'toggle' + (b.showText ? ' on' : ''), onclick: e => { e.stopPropagation(); tg.classList.toggle('on'); set('showText', tg.classList.contains('on')); draw(); } }, h('i'), 'Texte sous les barres');
-    more.append(seg(b.size, [['S', 'Bas'], ['M', 'Moyen'], ['L', 'Haut']], v => { set('size', v); draw(); }), tg);
+  else if (b.type === 'toc') {
+    const title = h('input', { class: 'title', value: b.title, placeholder: 'Titre (facultatif)', oninput: e => set('title', e.target.value) });
+    const preview = h('div', { class: 'tocview' });
+    const refreshPreview = () => {
+      preview.innerHTML = ''; let n = 0;
+      tocGroups(b).forEach(g => {
+        if (g.head) preview.append(h('div', { class: 'h' }, h('span', {}, g.head), h('small', { style: 'font-weight:400' }, 'p.')));
+        g.rows.forEach(r => { if (n++ < 14) preview.append(h('div', { class: 'r' + (r.page ? '' : ' miss') }, h('span', { class: 'n' }, r.name), h('span', { class: 'd' }), h('span', { class: 'p' }, r.page || '?'))); });
+      });
+      if (n > 14) preview.append(h('div', { style: 'opacity:.6' }, `… et ${n - 14} autres`));
+      if (!n) preview.append(h('div', { style: 'opacity:.5' }, 'Touche pour écrire, ou importe une photo'));
+      if (+b.blank) preview.append(h('div', { style: 'opacity:.55;font-size:14px;margin-top:4px' }, `+ ${b.blank} ligne${b.blank > 1 ? 's' : ''} vide${b.blank > 1 ? 's' : ''} à remplir`));
+    };
+    refreshPreview();
+    const ta = h('textarea', { rows: 4, value: b.items, placeholder: 'Une ligne par entrée, le numéro de page à la fin :\nBaguette 1-2\nBurger 34\n# Sucré   ← nouvelle rubrique',
+      oninput: e => { autosize(e.target); set('items', e.target.value); refreshPreview(); } });
+    ta.style.display = b.id === selectedId ? '' : 'none';
+    preview.style.display = b.id === selectedId ? 'none' : '';
+    c.append(title, preview, ta);
+    requestAnimationFrame(() => autosize(ta));
+    c._onSelect = on => { ta.style.display = on ? '' : 'none'; preview.style.display = on ? 'none' : ''; if (on) autosize(ta); };
+    const apply = text => { ta.value = text; autosize(ta); set('items', text); refreshPreview(); };
+    const blankLab = h('span', { style: 'font-size:13px;color:var(--mute);min-width:96px' });
+    const showBlank = v => blankLab.textContent = v ? `${v} ligne${v > 1 ? 's' : ''} vide${v > 1 ? 's' : ''}` : 'Aucune ligne vide';
+    showBlank(+b.blank || 0);
+    const sortT = h('button', { class: 'toggle' + (b.sort ? ' on' : ''), onclick: e => { e.stopPropagation(); sortT.classList.toggle('on'); set('sort', sortT.classList.contains('on')); refreshPreview(); } }, h('i'), 'Ordre A → Z');
+    more.append(
+      h('button', { class: 'magic', onclick: e => { e.stopPropagation(); tocFromFile(b, apply); } }, '📷 Photo / PDF'),
+      h('button', { class: 'ai-btn', onclick: e => { e.stopPropagation(); openAI(b, 'toc'); } }, '✍️ Écriture à la main : Claude'),
+      h('label', { class: 'slider', title: 'Lignes vides à remplir à la main' }, '✎',
+        h('input', { type: 'range', min: 0, max: 20, step: 1, value: +b.blank || 0, oninput: e => { const v = +e.target.value; showBlank(v); set('blank', v); refreshPreview(); } }), blankLab),
+      seg(b.leader || 'dots', [['dots', '·····', 'Pointillés'], ['line', '———', 'Trait fin'], ['none', 'Rien', 'Sans liaison']], v => set('leader', v)),
+      sortT,
+      seg(b.size, SIZE_OPTS.slice(0, 4), v => set('size', v)));
   }
 
   else if (b.type === 'sep') {
@@ -314,8 +341,8 @@ function pressEnd(e) {
   if (e.type === 'pointercancel') return;
   select(b.id);
   if (!wasSel) { // premier toucher : on ouvre directement le champ principal
-    const f = c.querySelector(b.type === 'list' ? 'textarea' : 'textarea, input.field, input.title');
-    if (f && b.type !== 'list') setTimeout(() => { f.focus(); try { f.setSelectionRange(f.value.length, f.value.length); } catch (_) {} }, 30);
+    const f = c.querySelector(b.type === 'list' || b.type === 'toc' ? 'textarea' : 'textarea, input.field, input.title');
+    if (f && b.type !== 'list' && b.type !== 'toc') setTimeout(() => { f.focus(); try { f.setSelectionRange(f.value.length, f.value.length); } catch (_) {} }, 30);
   }
 }
 document.addEventListener('pointermove', e => {
@@ -420,7 +447,7 @@ function addBlock(type, props, focus) {
   const el = document.querySelector(`.block[data-id="${b.id}"]`);
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    if (focus) { const t = el.querySelector(type === 'list' ? 'textarea' : 'textarea, input.field'); if (t) setTimeout(() => t.focus(), 50); }
+    if (focus) { const t = el.querySelector(type === 'list' || type === 'toc' ? 'textarea' : 'textarea, input.field'); if (t) setTimeout(() => t.focus(), 50); }
   }
   return b;
 }
@@ -1026,6 +1053,169 @@ function renderLabelEditor() {
 
 
 // ---------- Listes avec Claude (via l'appli Claude, sans clé API) ----------
+// ---------- Sommaire : lecture d'une photo (OCR sur l'iPad) ou d'un PDF ----------
+let ocrWorker = null;
+function loadScript(src) {
+  return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error('chargement impossible : ' + src)); document.head.append(sc); });
+}
+async function getOcr(progress) {
+  if (ocrWorker) return ocrWorker;
+  if (!window.Tesseract) await loadScript('lib/ocr/tesseract.min.js?v=' + APP_VERSION);
+  const base = new URL('lib/ocr/', location.href).href;
+  ocrWorker = await Tesseract.createWorker('fra', 1, {
+    workerPath: base + 'worker.min.js', corePath: base, langPath: base.replace(/\/$/, ''), workerBlobURL: false,
+    logger: m => { if (progress && m && m.status) progress(m); },
+  });
+  await ocrWorker.setParameters({ preserve_interword_spaces: '1' });
+  return ocrWorker;
+}
+// Photo → image nettoyée (niveaux de gris, contraste étiré, 2400 px max)
+async function ocrPrepare(file) {
+  const src = await readAs(file, 'url');
+  const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image illisible')); i.src = src; });
+  const k = Math.min(1, 2400 / Math.max(im.naturalWidth, im.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, c.width, c.height);
+  const id = x.getImageData(0, 0, c.width, c.height), d = id.data, hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) { const v = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0; d[i] = v; hist[v]++; }
+  const tot = d.length / 4; let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > tot * 0.01) { lo = v; break; } }
+  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > tot * 0.25) { hi = v; break; } } // le papier = le quart le plus clair
+  const span = Math.max(30, hi - lo);
+  for (let i = 0; i < d.length; i += 4) { const v = Math.max(0, Math.min(255, (d[i] - lo) * 255 / span)); d[i] = d[i + 1] = d[i + 2] = v; }
+  x.putImageData(id, 0, 0);
+  return c;
+}
+// Texte brut (OCR, PDF ou réponse de Claude) → lignes « Nom 12 » et « # Rubrique »
+function tocParseText(text) {
+  const out = [], seen = new Set();
+  const fixNum = t => /\d/.test(t) && /^[0-9OoIlS|B\-–\/]+$/.test(t) ? t.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/B/g, '8') : t;
+  text.replace(/\r/g, '').split('\n').forEach(raw => {
+    let l = raw.replace(/^```.*$/, '').replace(/\*\*/g, '').replace(/^\s*(?:[-*•]\s+|\d+[.)]\s+(?=\D))/, '').replace(/[“”«»]/g, '').trim();
+    if (!l) return;
+    if (/^#+\s*\S/.test(l)) { const hd = l.replace(/^#+\s*/, '').replace(/\s+p\.?$/i, '').trim(); if (hd) out.push('# ' + hd); return; }
+    l = l.replace(/\s*;\s*(?=\S+$)/, ' '); // « Nom ; 12 »
+    const parts = l.split(/\s+/); parts[parts.length - 1] = fixNum(parts[parts.length - 1]); l = parts.join(' ');
+    const r = parseTocLine(l); if (!r || r.head != null) return;
+    const letters = (r.name.match(/\p{L}/gu) || []).length;
+    // intertitre en capitales (« SALÉ p. ») ; « p. » seul ignoré
+    if (!r.page && letters >= 3 && r.name.replace(/\s+p\.?$/i, '') === r.name.replace(/\s+p\.?$/i, '').toLocaleUpperCase('fr') && /^[\p{Lu}\s&'’-]+(\s+p\.?)?$/u.test(r.name)) {
+      const hd = r.name.replace(/\s+p\.?$/i, '').toLocaleLowerCase('fr'); out.push('# ' + hd.charAt(0).toLocaleUpperCase('fr') + hd.slice(1)); return;
+    }
+    if (letters < 3) return;
+    const key = r.name.toLocaleLowerCase('fr');
+    if (seen.has(key)) return; seen.add(key);
+    out.push(r.page ? `${r.name} ${r.page}` : r.name);
+  });
+  return out;
+}
+// Lecture « en colonnes » : on repère la colonne des numéros de page (alignés à droite), puis pour chaque numéro
+// les mots à sa hauteur, à gauche, à partir du bord gauche des noms. Le bruit des bords de la photo est ignoré.
+function tocFromWords(data, W) {
+  const words = [];
+  (data.blocks || []).forEach(bl => (bl.paragraphs || []).forEach(pa => (pa.lines || []).forEach(li => (li.words || []).forEach(w => {
+    const t = (w.text || '').trim(); if (!t || !w.bbox) return;
+    const b = w.bbox; words.push({ t, c: w.confidence, x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1, cy: (b.y0 + b.y1) / 2, h: b.y1 - b.y0, line: li });
+  }))));
+  const isNum = t => /^\d{1,3}(?:[-–]\d{1,3})?$/.test(t.replace(/[.,:;]+$/, ''));
+  const nums = words.filter(w => isNum(w.t) && w.c > 45);
+  if (nums.length < 3) return null;
+  // colonne des numéros la plus fournie (fin des numéros à ±4 % de largeur)
+  const tol = W * 0.06;
+  let best = null;
+  nums.forEach(n => { const g = nums.filter(m => Math.abs(m.x1 - n.x1) < tol); if (!best || g.length > best.length) best = g; });
+  if (best.length < 3) return null;
+  const colX = Math.min(...best.map(n => n.x0));
+  const letters = t => (t.match(/\p{L}/gu) || []).length;
+  // mots d'une ligne Tesseract situés à gauche de la colonne des numéros
+  const lineWords = (li, maxX) => words.filter(w => w.line === li && w.x1 < maxX);
+  // bord gauche des noms : médiane du premier vrai mot de chaque ligne numérotée
+  const starts = [];
+  best.forEach(n => { const ws = lineWords(n.line, n.x0).filter(w => letters(w.t) >= 3 && w.c > 50).sort((a, b) => a.x0 - b.x0); if (ws[0]) starts.push(ws[0].x0); });
+  if (!starts.length) return null;
+  starts.sort((a, b) => a - b);
+  const left = starts[Math.floor(starts.length / 2)] - W * 0.03;
+  const clean = ws => ws.filter(w => w.x0 >= left && !/^[.…·_\-–—]+$/.test(w.t)).sort((a, b) => a.x0 - b.x0)
+    .map(w => w.t).join(' ').replace(/[\s.…·_:;|,\-–—]+$/, '').replace(/^[^\p{L}\d(]+/u, '').trim();
+  const numLines = new Set(best.map(n => n.line));
+  const usedLines = new Set();
+  const items = [];
+  best.slice().sort((a, b) => a.cy - b.cy).forEach(n => {
+    let li = n.line, name = clean(lineWords(li, n.x0));
+    if (letters(name) < 2) { // numéro isolé : on le rattache à la ligne de noms la plus proche qui n'a pas de numéro
+      let near = null;
+      words.forEach(w => { if (!numLines.has(w.line) && !usedLines.has(w.line) && w.x0 >= left && w.x1 < colX && letters(w.t) >= 3 && w.c > 70 && Math.abs(w.cy - n.cy) < n.h * 2.5 && (!near || Math.abs(w.cy - n.cy) < Math.abs(near.cy - n.cy))) near = w; });
+      if (!near) return;
+      li = near.line; name = clean(lineWords(li, colX));
+    }
+    usedLines.add(li);
+    if (letters(name) >= 2) items.push({ y: n.cy, text: `${name} ${n.t.replace(/[.,:;]+$/, '').replace('–', '-')}` });
+  });
+  const y0 = Math.min(...best.map(n => n.cy)) - W * 0.12, y1 = Math.max(...best.map(n => n.cy)) + W * 0.05;
+  // lignes de noms bien lues mais sans numéro (numéro manqué) : gardées, à compléter
+  const seenLine = new Set();
+  words.forEach(w => {
+    const li = w.line; if (seenLine.has(li) || numLines.has(li) || usedLines.has(li)) return; seenLine.add(li);
+    const ws = lineWords(li, colX).filter(x => x.x0 >= left);
+    if (!ws.length || ws.some(x => x.c < 80) || w.cy < y0 || w.cy > y1) return;
+    const name = clean(ws); if (letters(name) < 3 || /^[\p{Lu}\s&'’-]+$/u.test(name)) return;
+    if (Math.abs(Math.min(...ws.map(x => x.x0)) - (left + W * 0.03)) > W * 0.03) return;
+    items.push({ y: ws[0].cy, text: name });
+  });
+  // intertitres en capitales alignés à gauche (« SALÉ »), entre la première et la dernière entrée
+    const used = new Set();
+  words.filter(w => w.x0 >= left && w.x0 < left + W * 0.08 && w.cy > y0 && w.cy < y1 && w.c > 60 && /^[\p{Lu}][\p{Lu}&'’-]{2,}$/u.test(w.t)).forEach(w => {
+    if (used.has(w.line) || items.some(it => Math.abs(it.y - w.cy) < w.h)) return; used.add(w.line);
+    const t = w.t.toLocaleLowerCase('fr'); items.push({ y: w.cy, text: '# ' + t.charAt(0).toLocaleUpperCase('fr') + t.slice(1) });
+  });
+  items.sort((a, b) => a.y - b.y);
+  return items.map(i => i.text).join('\n');
+}
+function tocMerge(b, lines, apply) {
+  const n = lines.filter(l => !l.startsWith('#')).length;
+  if (!n) { toast('Je ne trouve aucune entrée dans ce document', true); return; }
+  let text = lines.join('\n');
+  if ((b.items || '').trim()) {
+    const have = new Set((b.items || '').split('\n').map(l => { const r = parseTocLine(l); return r && r.name ? r.name.toLocaleLowerCase('fr') : ''; }));
+    const add = lines.filter(l => { const r = parseTocLine(l); return r.head != null || !have.has(r.name.toLocaleLowerCase('fr')); });
+    text = confirm('Remplacer le sommaire actuel ?\n\nOK = remplacer · Annuler = ajouter à la suite les entrées nouvelles')
+      ? text : (b.items.replace(/\s+$/, '') + '\n' + add.join('\n')).trim();
+  }
+  apply(text);
+  const miss = lines.filter(l => { const r = parseTocLine(l); return r.name && !r.page; }).length;
+  toast(`${n} entrée${n > 1 ? 's' : ''} lue${n > 1 ? 's' : ''}` + (miss ? ` · ${miss} sans numéro (en rose) à vérifier` : ' ✓'));
+}
+function tocFromFile(b, apply) {
+  const inp = h('input', { type: 'file', accept: 'image/*,application/pdf', style: 'display:none' });
+  document.body.append(inp);
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0]; inp.remove(); if (!file) return;
+    try {
+      if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
+        toast('Lecture du PDF…');
+        const r = await pdfToText(file);
+        tocMerge(b, tocParseText(r.text.replace(/^>\s?/gm, '')), apply);
+        return;
+      }
+      toast('Préparation de la photo…');
+      const img = await ocrPrepare(file);
+      let last = 0;
+      const worker = await getOcr(m => {
+        const now = Date.now(); if (now - last < 700) return; last = now;
+        toast(m.status === 'recognizing text' ? `Lecture de la photo… ${Math.round((m.progress || 0) * 100)} %` : 'Préparation de la lecture (1re fois : quelques secondes)…');
+      });
+      const { data } = await worker.recognize(img, {}, { text: true, blocks: true });
+      tocMerge(b, tocParseText(tocFromWords(data, img.width) || data.text || ''), apply);
+    } catch (e) { toast('Lecture impossible : ' + (e.message || e), true); }
+  };
+  inp.click();
+}
+
+const CLAUDE_TOC_PROMPT = `Je t'envoie la photo d'un sommaire imprimé, avec peut-être des lignes ajoutées à la main.
+Recopie TOUTES les entrées, y compris celles écrites à la main, sans aucun commentaire, une par ligne, exactement dans ce format :
+# Rubrique
+Nom de l'entrée ; numéro de page
+Règles : respecte l'orthographe et les numéros tels qu'écrits (ex. 1-2) ; une ligne « # » pour chaque intertitre (ex. SALÉ) ; ignore le titre général, les « p. » et les lignes vides.`;
 const CLAUDE_PROMPT = `Je vais réfléchir à voix haute pour préparer une liste à cocher que j'imprimerai sur un petit ticket.
 Laisse-moi parler. Si c'est utile, pose-moi une ou deux questions courtes.
 Quand je te dis « c'est bon », donne-moi UNIQUEMENT la liste finale, sans aucun commentaire, exactement dans ce format :
@@ -1043,10 +1233,11 @@ function parseClaudeList(text) {
   if (!items.length) return { title: '', items: tidyList(text) };
   return { title, items: tidyList(items.join('\n')) };
 }
-function openAI(block) {
+function openAI(block, kind) {
   const sheet = $('aiSheet'); sheet.innerHTML = '';
-  const url = 'claude://claude.ai/new?q=' + encodeURIComponent(CLAUDE_PROMPT);
-  const web = 'https://claude.ai/new?q=' + encodeURIComponent(CLAUDE_PROMPT);
+  const toc = kind === 'toc', PROMPT = toc ? CLAUDE_TOC_PROMPT : CLAUDE_PROMPT;
+  const url = 'claude://claude.ai/new?q=' + encodeURIComponent(PROMPT);
+  const web = 'https://claude.ai/new?q=' + encodeURIComponent(PROMPT);
   const step = (n, title, ...body) => h('div', { class: 'result', style: 'display:flex;gap:12px;align-items:flex-start;margin:10px 0' },
     h('b', { style: 'font-family:var(--display);font-size:22px;color:var(--pink);line-height:1' }, n), h('div', { style: 'flex:1' }, h('div', { style: 'font-weight:700;margin-bottom:6px' }, title), ...body));
   const pasteBox = h('textarea', { placeholder: 'Colle ici la réponse de Claude (appui long → Coller)', style: 'min-height:90px' });
@@ -1057,6 +1248,13 @@ function openAI(block) {
     catch (_) { toast('Appuie longuement dans le cadre ci-dessus, puis « Coller »', true); pasteBox.focus(); }
   };
   use.onclick = () => {
+    if (toc) {
+      const lines = tocParseText(pasteBox.value);
+      if (!lines.length) { toast('Je ne trouve pas de sommaire dans ce texte', true); return; }
+      $('aiBg').classList.remove('open');
+      tocMerge(block, lines, t => { block.items = t; selectedId = block.id; renderBlocks(); changed(); });
+      return;
+    }
     const r = parseClaudeList(pasteBox.value);
     const n = r.items ? r.items.split('\n').filter(Boolean).length : 0;
     if (!n) { toast('Je ne trouve pas de liste dans ce texte', true); return; }
@@ -1067,13 +1265,14 @@ function openAI(block) {
   };
   pasteBox.addEventListener('paste', () => setTimeout(() => { if (pasteBox.value.trim()) use.click(); }, 50));
   sheet.append(
-    h('h3', {}, '🎙️ Ta liste avec Claude'),
+    h('h3', {}, toc ? '✍️ Lire la photo avec Claude' : '🎙️ Ta liste avec Claude'),
     step('1', 'Ouvre Claude, la consigne est déjà prête',
       h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
         h('a', { href: url, class: 'ai-btn', style: 'display:inline-flex;align-items:center;text-decoration:none' }, 'Ouvrir l\'appli Claude'),
-        h('button', { class: 'mini-chip', onclick: async () => { try { await navigator.clipboard.writeText(CLAUDE_PROMPT); toast('Consigne copiée'); } catch (_) { toast('Copie refusée', true); } } }, 'Copier la consigne')),
+        h('button', { class: 'mini-chip', onclick: async () => { try { await navigator.clipboard.writeText(PROMPT); toast('Consigne copiée'); } catch (_) { toast('Copie refusée', true); } } }, 'Copier la consigne')),
       h('p', { class: 'hint', style: 'margin:8px 0 0' }, 'Si l\'appli ne s\'ouvre pas : ', h('a', { href: web, style: 'color:var(--violet)' }, 'version web'), '.')),
-    step('2', 'Parle librement', h('p', { class: 'hint', style: 'margin:0' }, 'Utilise le mode vocal de Claude et réfléchis à voix haute. Quand tu as fini, dis « c\'est bon » : il te donne la liste propre.')),
+    toc ? step('2', 'Ajoute ta photo et envoie', h('p', { class: 'hint', style: 'margin:0' }, 'Dans Claude, touche + pour prendre la photo du sommaire (ou la choisir), puis envoie. Il recopie tout, même ce qui est écrit à la main.'))
+      : step('2', 'Parle librement', h('p', { class: 'hint', style: 'margin:0' }, 'Utilise le mode vocal de Claude et réfléchis à voix haute. Quand tu as fini, dis « c\'est bon » : il te donne la liste propre.')),
     step('3', 'Copie sa réponse et reviens ici', pasteBox, tryClipboard, use));
   $('aiBg').classList.add('open');
 }
@@ -1224,7 +1423,7 @@ document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
   if (t === 'file') { $('filePick').value = ''; $('filePick').click(); }
   else if (t === 'draw') newDrawing();
   else if (t === 'paste') pasteFromClipboard();
-  else addBlock(t, {}, t === 'text' || t === 'list' || t === 'qr' || t === 'barcode');
+  else addBlock(t, {}, t === 'text' || t === 'list' || t === 'qr' || t === 'toc');
 });
 
 // Feuille de réglages
