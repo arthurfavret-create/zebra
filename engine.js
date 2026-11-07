@@ -484,7 +484,10 @@ function buildZpl(pages) {
     });
   } else {
     const p = pages[0];
-    const segs = slice(p, TPE_SEGMENT);
+    // Ticket long découpé en plusieurs formats : l'imprimante sort chaque format « tête en bas »
+    // (le haut du format sort en dernier). Pour que les morceaux se lisent dans l'ordre une fois
+    // le ticket déchiré, on envoie le dernier morceau en premier.
+    const segs = slice(p, TPE_SEGMENT).reverse();
     segs.forEach(([a, z]) => {
       const g = canvasToGFA(p, a, z);
       parts.push(`^XA\n^MNN\n^PW${PW}\n^LL${z - a}\n^LH0,0\n^FO0,0${g.zpl}^FS\n^XZ`);
