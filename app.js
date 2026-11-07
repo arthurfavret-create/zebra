@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070154';
+const APP_VERSION = '202611070201';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -464,7 +464,9 @@ function parseListText(text) {
 }
 function listBlocksFrom(data) {
   const groups = (data.g || []).filter(g => g && g[1] && g[1].length);
-  const multi = groups.length > 1 || !!(groups[0] && groups[0][0]);
+  // une seule rubrique (« Sans date », « Autres »…) : pas d'intertitre, juste la liste sous son titre
+  const multi = groups.length > 1;
+  if (!multi && groups[0] && !data.t) data = Object.assign({}, data, { t: groups[0][0] });
   const out = [];
   if (multi && data.t) out.push(newBlock('text', { text: '# ' + data.t, align: 'center' }));
   groups.forEach(([title, items]) => out.push(newBlock('list', { title: multi ? (title || '') : (data.t || ''), items: items.map(String).join('\n') })));
