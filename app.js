@@ -700,8 +700,36 @@ $('btnCopyZpl').onclick = async () => {
 $('btnClear').onclick = () => { $('sheetBg').classList.remove('open'); wipeAll(); };
 $('btnWipe').onclick = wipeAll;
 
+// ---------- Import depuis Mes Listes (#liste=…) ----------
+// Le contenu passe dans le fragment (#) : il n'est jamais envoyé au serveur.
+function importFromHash() {
+  const m = location.hash.match(/^#liste=(.+)$/);
+  if (!m) return false;
+  let data;
+  try { data = JSON.parse(decodeURIComponent(m[1])); } catch (_) { return false; }
+  if ('bluetooth' in navigator) history.replaceState(null, '', location.pathname); // hors Bluefy, on garde le lien pour pouvoir le rouvrir dans Bluefy
+  const groups = (data.g || []).filter(g => g && g[1] && g[1].length);
+  if (!groups.length) return false;
+  const backup = state.blocks.slice();
+  const blocks = [];
+  const multi = groups.length > 1 || (groups[0][0] || '');
+  if (multi && data.t) blocks.push(newBlock('text', { text: '# ' + data.t, align: 'center' }));
+  groups.forEach(([title, items]) => blocks.push(newBlock('list', { title: multi ? (title || '') : (data.t || ''), items: items.map(String).join('\n'), size: 'M' })));
+  blocks.push(newBlock('text', { text: 'Imprimé le {date}', size: 'S', align: 'center' }));
+  state.mode = 'tpe'; state.blocks = blocks; selectedId = null;
+  save();
+  const n = groups.reduce((s, g) => s + g[1].length, 0);
+  setTimeout(() => {
+    if (!('bluetooth' in navigator)) toast('Liste reçue. Pour imprimer, ouvre ce lien dans Bluefy 📱', true);
+    else toast(`« ${data.t || 'Liste'} » reçue : ${n} éléments`, false, { label: 'Annuler', run: () => { state.blocks = backup; renderBlocks(); changed(); } });
+  }, 400);
+  return true;
+}
+
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
+importFromHash();
+window.addEventListener('hashchange', () => { if (importFromHash()) { syncTop(); renderBlocks(); changed(); } });
 syncTop();
 renderBlocks();
 renderPreview();
