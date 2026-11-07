@@ -17,9 +17,9 @@ function openDrawing(opts) {
     let H = Math.round((opts.height || 400) * DRAW_SCALE);
     const k = opts.strokesWidth && opts.strokesWidth !== opts.width ? opts.width / opts.strokesWidth : 1;
     if (k !== 1) H = Math.round(H * k);
-    let strokes = (opts.strokes || []).map(s => ({ tool: s.tool, w: s.w, pts: s.pts.map(p => [Math.round(p[0] * k), Math.round(p[1] * k), p[2]]) }));
+    let strokes = (opts.strokes || []).map(s => ({ tool: s.tool, w: s.w, i: s.i, pts: s.pts.map(p => [Math.round(p[0] * k), Math.round(p[1] * k), p[2]]) }));
     const redo = [];
-    let tool = 'feutre', penSeen = false, handMode = false;
+    let tool = 'feutre', penSeen = false, handMode = false, intensity = 1;
     const active = new Map();   // traits en cours, un par pointeur (stylet, doigt…)
     let scroller = null;        // défilement au doigt
 
@@ -33,6 +33,8 @@ function openDrawing(opts) {
       <div class="draw-tools">
         ${Object.entries(DRAW_TOOLS).map(([k, t]) => `<button class="dtool${k === tool ? ' on' : ''}" data-tool="${k}"><span>${t.icon}</span>${t.label}</button>`).join('')}
         <span class="dsep"></span>
+        ${[1, 0.7, 0.45, 0.25].map(v => `<button class="dtool dint${v === 1 ? ' on' : ''}" data-int="${v}"><i style="background:rgb(${Math.round(255 * (1 - v))},${Math.round(255 * (1 - v))},${Math.round(255 * (1 - v))})"></i>${Math.round(v * 100)} %</button>`).join('')}
+        <span class="dsep"></span>
         <button class="dtool" data-act="hand"><span>✋</span>Défiler</button>
         <button class="dtool" data-act="undo"><span>↶</span>Annuler</button>
         <button class="dtool" data-act="redo"><span>↷</span>Refaire</button>
@@ -40,7 +42,7 @@ function openDrawing(opts) {
         ${opts.fixedHeight ? '' : `<span class="dsep"></span><button class="dtool" data-act="shorter"><span>−</span>Raccourcir</button><button class="dtool" data-act="taller"><span>+</span>Allonger</button>`}
       </div>
       <div class="draw-stage"><div class="draw-paper"><canvas></canvas></div></div>
-      <div class="draw-hint">Le stylet dessine, le doigt fait défiler. Ce que tu vois sera imprimé en noir.</div>`;
+      <div class="draw-hint">Le stylet dessine, le doigt fait défiler. Les gris sont imprimés en fine trame de points.</div>`;
     document.body.append(bg);
     const cv = bg.querySelector('canvas'), ctx = cv.getContext('2d');
     const stage = bg.querySelector('.draw-stage');
@@ -54,8 +56,10 @@ function openDrawing(opts) {
     }
     function strokePath(s, from) {
       const t = DRAW_TOOLS[s.tool];
-      ctx.globalCompositeOperation = t.erase ? 'destination-out' : 'source-over';
-      ctx.strokeStyle = '#000'; ctx.fillStyle = '#000'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // gris = feutre atténué ; « darken » : un trait plus clair ne pâlit jamais un trait plus foncé
+      ctx.globalCompositeOperation = t.erase ? 'destination-out' : 'darken';
+      const v = Math.round(255 * (1 - (s.i == null ? 1 : s.i)));
+      ctx.strokeStyle = ctx.fillStyle = `rgb(${v},${v},${v})`; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       const p = s.pts;
       if (p.length === 1) { ctx.beginPath(); ctx.arc(p[0][0], p[0][1], s.w * (0.4 + p[0][2]) / 2, 0, Math.PI * 2); ctx.fill(); return; }
       for (let i = Math.max(1, from || 1); i < p.length; i++) {
@@ -101,7 +105,7 @@ function openDrawing(opts) {
       if (isPalm(e)) return;
       try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       const t = DRAW_TOOLS[tool];
-      const s = { tool, w: t.w, pts: [pos(e)], touch: e.pointerType === 'touch', t0: performance.now() };
+      const s = { tool, w: t.w, i: t.erase ? 1 : intensity, pts: [pos(e)], touch: e.pointerType === 'touch', t0: performance.now() };
       active.set(e.pointerId, s);
       strokes.push(s); redo.length = 0;
       strokePath(s);
@@ -129,6 +133,8 @@ function openDrawing(opts) {
     cv.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
     bg.addEventListener('click', e => {
+      const ib = e.target.closest('[data-int]');
+      if (ib) { intensity = +ib.dataset.int; bg.querySelectorAll('[data-int]').forEach(b => b.classList.toggle('on', b === ib)); if (DRAW_TOOLS[tool].erase) { tool = 'feutre'; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === 'feutre')); } return; }
       const tb = e.target.closest('[data-tool]');
       if (tb) { tool = tb.dataset.tool; bg.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b === tb)); return; }
       const act = (e.target.closest('[data-act]') || {}).dataset; if (!act) return;
@@ -149,7 +155,7 @@ function openDrawing(opts) {
           // image finale : fond blanc, traits noirs
           const out = document.createElement('canvas'); out.width = W; out.height = H;
           const o = out.getContext('2d'); o.fillStyle = '#fff'; o.fillRect(0, 0, W, H); o.drawImage(cv, 0, 0);
-          close({ src: out.toDataURL('image/png'), strokes: strokes.map(s => ({ tool: s.tool, w: s.w, pts: s.pts })), height: H / DRAW_SCALE, width: W / DRAW_SCALE });
+          close({ src: out.toDataURL('image/png'), strokes: strokes.map(s => ({ tool: s.tool, w: s.w, i: s.i, pts: s.pts })), height: H / DRAW_SCALE, width: W / DRAW_SCALE });
           break;
         }
       }

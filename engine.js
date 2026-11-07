@@ -197,6 +197,22 @@ function renderListBlock(ctx, b, W, draw) {
 }
 
 // ---------- Rendu : images (tramage) ----------
+// Trame ordonnée 8×8 (Bayer) : rend les gris par un motif net et régulier
+const BAYER8 = [0,32,8,40,2,34,10,42,48,16,56,24,50,18,58,26,12,44,4,36,14,46,6,38,60,28,52,20,62,30,54,22,
+  3,35,11,43,1,33,9,41,51,19,59,27,49,17,57,25,15,47,7,39,13,45,5,37,63,31,55,23,61,29,53,21];
+function bayerCanvas(src, w, h) {
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
+  const x = c.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.drawImage(src, 0, 0, c.width, c.height);
+  const id = x.getImageData(0, 0, c.width, c.height), d = id.data;
+  for (let yy = 0; yy < c.height; yy++) for (let xx = 0; xx < c.width; xx++) {
+    const i = (yy * c.width + xx) * 4, v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const o = v < 45 ? 0 : v > 232 ? 255 : (v < (BAYER8[(yy & 7) * 8 + (xx & 7)] + 0.5) * 4 ? 0 : 255);
+    d[i] = d[i + 1] = d[i + 2] = o; d[i + 3] = 255;
+  }
+  x.putImageData(id, 0, 0);
+  return c;
+}
 // Rogne les bords blancs d'une image (pages de PDF, captures…) pour pouvoir coller les images en frise
 const trimCache = new WeakMap();
 function trimWhite(img) {
@@ -243,9 +259,14 @@ function ditherInto(img, targetW, b) {
       if (xx + 1 < w) g[i + 1] += err * 7 / 16;
       if (yy + 1 < h) { if (xx > 0) g[i + w - 1] += err * 3 / 16; g[i + w] += err * 5 / 16; if (xx + 1 < w) g[i + w + 1] += err / 16; }
     }
+  } else if (b.render === 'ink') {
+    // dessin : noir franc, blanc franc, et les gris (feutre atténué) en trame régulière
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+      const i = yy * w + xx, v = g[i] - 18;
+      g[i] = v < 45 ? 0 : v > 232 ? 255 : (v < (BAYER8[(yy & 7) * 8 + (xx & 7)] + 0.5) * 4 ? 0 : 255);
+    }
   } else {
-    const cut = b.render === 'ink' ? 215 : 150; // dessin : on garde les traits fins
-    for (let i = 0; i < w * h; i++) g[i] = g[i] < cut ? 0 : 255;
+    for (let i = 0; i < w * h; i++) g[i] = g[i] < 150 ? 0 : 255;
   }
   for (let i = 0; i < w * h; i++) { const v = g[i] < 128 ? 0 : 255; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
   x.putImageData(id, 0, 0);

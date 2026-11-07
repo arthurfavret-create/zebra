@@ -140,7 +140,7 @@ function composeLabel(L, opts) {
         const r = Math.min(aw / im.width, it.h / im.height);
         const dw = im.width * r, dh = im.height * r;
         const dx = L.align === 'left' ? ax : ax + (aw - dw) / 2;
-        ctx.drawImage(im, dx, y + (it.h - dh) / 2, dw, dh);
+        ctx.drawImage(bayerCanvas(im, dw, dh), Math.round(dx), Math.round(y + (it.h - dh) / 2)); // gris tramés
       }
     } else if (it.kind === 'icon') {
       ctx.font = `${it.size}px ${family}`; ctx.fillStyle = '#000'; ctx.textBaseline = 'alphabetic';
