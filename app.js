@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070423';
+const APP_VERSION = '202611070430';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1219,6 +1219,8 @@ if (channel) channel.onmessage = e => {
     try { window.close(); } catch (_) {}
   }
 };
+
+window.addEventListener('scroll', () => document.querySelector('header').classList.toggle('scrolled', scrollY > 4), { passive: true });
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
