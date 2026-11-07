@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070226';
+const APP_VERSION = '202611070257';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -21,14 +21,41 @@ let toastTimer;
 function toast(text, err, action) {
   const t = $('toast'); t.textContent = text; t.className = 'toast show' + (err ? ' err' : '') + (action ? ' act' : '');
   if (action) t.append(h('button', { onclick: () => { t.className = 'toast'; action.run(); } }, action.label));
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = 'toast', action ? 6000 : err ? 4500 : 2600);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = 'toast', action ? (action.ms || 12000) : err ? 4500 : 2600);
   log(text);
+}
+// Corbeille : la dernière page effacée reste récupérable (sur cet iPad) jusqu'au prochain effacement
+function trashSave(blocks) { try { localStorage.setItem('zebra-trash', JSON.stringify({ at: Date.now(), blocks })); } catch (_) {} }
+function trashGet() { try { return JSON.parse(localStorage.getItem('zebra-trash') || 'null'); } catch (_) { return null; } }
+function restoreTrash() {
+  const t = trashGet(); if (!t || !t.blocks || !t.blocks.length) { toast('Rien à restaurer', true); return; }
+  const blocks = t.blocks.map(b => Object.assign({}, b, { id: nextId++ }));
+  state.blocks = state.blocks.concat(blocks); selectedId = null; renderBlocks(); changed();
+  $('sheetBg').classList.remove('open'); $('aiBg').classList.remove('open');
+  toast(`${blocks.length} bloc${blocks.length > 1 ? 's' : ''} restauré${blocks.length > 1 ? 's' : ''} ✓`);
 }
 function wipeAll() {
   if (!state.blocks.length) { toast('C\'est déjà tout propre ✨'); return; }
-  const backup = state.blocks.slice();
-  state.blocks = []; selectedId = null; renderBlocks(); changed();
-  toast('Tout est effacé 🧹', false, { label: 'Annuler', run: () => { state.blocks = backup; renderBlocks(); changed(); toast('Restauré'); } });
+  const n = state.blocks.length;
+  const sheet = $('aiSheet'); sheet.innerHTML = '';
+  sheet.append(h('h3', {}, '🧹 Tout effacer ?'),
+    h('p', { class: 'hint', style: 'font-size:15px;color:var(--ink)' }, `${n} bloc${n > 1 ? 's' : ''} vont disparaître de la page. Ils restent récupérables dans ⚙︎ Réglages → « Restaurer la page effacée », jusqu'au prochain effacement.`),
+    h('div', { style: 'display:flex;gap:10px;margin-top:6px' },
+      h('button', { class: 'use', style: 'margin:0;flex:1;background:var(--bg);color:var(--ink)', onclick: () => $('aiBg').classList.remove('open') }, 'Garder'),
+      h('button', { class: 'go', style: 'flex:1', onclick: () => {
+        $('aiBg').classList.remove('open');
+        const backup = state.blocks.slice();
+        trashSave(backup);
+        state.blocks = []; selectedId = null; renderBlocks(); changed(); syncTrash();
+        toast('Tout est effacé 🧹', false, { label: 'Annuler', run: () => { state.blocks = backup; renderBlocks(); changed(); toast('Restauré'); } });
+      } }, 'Effacer')));
+  $('aiBg').classList.add('open');
+}
+function syncTrash() {
+  const t = trashGet(), btn = $('btnRestore'); if (!btn) return;
+  const ok = t && t.blocks && t.blocks.length;
+  btn.disabled = !ok;
+  $('trashInfo').textContent = ok ? `${t.blocks.length} bloc${t.blocks.length > 1 ? 's' : ''}, effacé${t.blocks.length > 1 ? 's' : ''} le ${new Date(t.at).toLocaleDateString('fr-FR')} à ${new Date(t.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'vide';
 }
 window.addEventListener('error', e => log('Erreur JS : ' + e.message));
 window.addEventListener('unhandledrejection', e => log('Erreur : ' + (e.reason && e.reason.message || e.reason)));
@@ -384,7 +411,7 @@ function duplicate(b) {
 }
 function remove(b) {
   const i = state.blocks.indexOf(b); state.blocks.splice(i, 1); selectedId = null; renderBlocks(); changed();
-  toast('Bloc supprimé');
+  toast('Bloc supprimé', false, { label: 'Annuler', run: () => { state.blocks.splice(Math.min(i, state.blocks.length), 0, b); selectedId = b.id; renderBlocks(); changed(); } });
 }
 
 // ---------- Fichiers, collage, glisser-déposer ----------
@@ -919,6 +946,8 @@ $('btnCopyZpl').onclick = async () => {
   catch (_) { toast('Copie refusée par le navigateur', true); }
 };
 $('btnClear').onclick = () => { $('sheetBg').classList.remove('open'); wipeAll(); };
+$('btnRestore').onclick = restoreTrash;
+$('btnSettings').addEventListener('click', syncTrash);
 $('btnWipe').onclick = wipeAll;
 
 // ---------- Import depuis Mes Listes (#liste=…) ----------
