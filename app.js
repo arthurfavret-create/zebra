@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070302';
+const APP_VERSION = '202611070308';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -439,6 +439,67 @@ function getImage(b) {
   if (imageCache.has(b.src)) return Promise.resolve(imageCache.get(b.src));
   return new Promise(res => { const im = new Image(); im.onload = () => { imageCache.set(b.src, im); res(im); }; im.onerror = () => res(null); im.src = b.src; });
 }
+// Extrait le texte d'un PDF (sans IA, sur l'iPad) et le remet en forme : titres, paragraphes, listes
+async function pdfToText(file) {
+  const lib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
+  if (!lib) throw new Error('lecteur PDF indisponible');
+  lib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+  const pdf = await lib.getDocument({ data: await readAs(file, 'buffer') }).promise;
+  const n = Math.min(pdf.numPages, 30);
+  const pages = [];
+  let chars = 0;
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    // regroupe les morceaux par ligne (même hauteur sur la page)
+    const items = tc.items.filter(it => it.str && it.str.trim() !== '' || it.hasEOL).map(it => ({ s: it.str, x: it.transform[4], y: it.transform[5], h: Math.abs(it.transform[3]) || it.height || 10, w: it.width || 0 }));
+    const lines = [];
+    items.sort((a, b) => b.y - a.y || a.x - b.x).forEach(it => {
+      if (!it.s) return;
+      const last = lines[lines.length - 1];
+      if (last && Math.abs(last.y - it.y) < Math.max(2, it.h * 0.4)) last.parts.push(it);
+      else lines.push({ y: it.y, h: it.h, parts: [it] });
+    });
+    const out = lines.map(l => {
+      l.parts.sort((a, b) => a.x - b.x);
+      let s = '', end = null;
+      l.parts.forEach(p => { if (end != null && p.x - end > p.h * 0.2 && !/\s$/.test(s) && !/^\s/.test(p.s)) s += ' '; s += p.s; end = p.x + p.w; });
+      return { y: l.y, x: l.parts[0].x, h: Math.max(...l.parts.map(p => p.h)), t: s.replace(/\s+/g, ' ').trim() };
+    }).filter(l => l.t);
+    chars += out.reduce((s, l) => s + l.t.length, 0);
+    pages.push(out);
+  }
+  if (chars < 20) return null; // PDF scanné (image) : pas de texte à lire
+  const all = pages.flat();
+  const sizes = all.map(l => l.h).sort((a, b) => a - b);
+  const body = sizes[Math.floor(sizes.length / 2)] || 10;
+  const md = [];
+  const xs = all.map(l => Math.round(l.x)).sort((a, b) => a - b);
+  const leftX = xs[Math.floor(xs.length * 0.1)] || 0;          // marge gauche du texte courant
+  const maxLen = Math.max(...all.map(l => l.t.length));
+  pages.forEach(lines => {
+    let para = '';
+    const flush = () => { if (para) { md.push(para); para = ''; } };
+    lines.forEach((l, i) => {
+      const prev = lines[i - 1];
+      const gap = prev ? prev.y - l.y : 0;
+      const indented = l.x > leftX + body * 0.8 && l.t.length < maxLen * 0.7;
+      const bullet = /^([•●▪◦‣\-–]|\d+[.)])\s+/.test(l.t) || (indented && !/[.:;,]$/.test(l.t) && l.h < body * 1.3);
+      if (l.h >= body * 1.3 && l.t.length < 90) { flush(); md.push((l.h >= body * 1.7 ? '# ' : '## ') + l.t); return; }
+      if (bullet) { flush(); md.push('- ' + l.t.replace(/^([•●▪◦‣\-–]|\d+[.)])\s+/, '')); return; }
+      if (prev && gap > Math.max(l.h, prev.h) * 1.7) flush();
+      // ligne précédente courte et sans ponctuation finale : vraie fin de ligne (adresse, liste…)
+      if (para && prev && prev.t.length < maxLen * 0.55 && !/[,;:\-]$/.test(prev.t) && !/^[a-zà-ÿ]/.test(l.t)) flush();
+      if (!para && md.length && /^- /.test(md[md.length - 1]) && prev && gap <= l.h * 1.5 && !/^[A-ZÀ-Ý]/.test(l.t)) { md[md.length - 1] += ' ' + l.t; return; }
+      para = para ? (/-$/.test(para) ? para.slice(0, -1) + l.t : para + ' ' + l.t) : l.t;
+    });
+    flush();
+    md.push('');
+  });
+  let text = md.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  for (let k = 0; k < 3; k++) text = text.replace(/^(- .*)\n\n(?=- )/gm, '$1\n'); // puces collées
+  return { text, pages: pdf.numPages, used: n };
+}
 async function pdfToImages(file) {
   const lib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
   if (!lib) throw new Error('lecteur PDF indisponible');
@@ -532,6 +593,17 @@ async function importFiles(files, target) {
         toast('Image ajoutée 🖼️');
       } else if (k === 'pdf') {
         toast('Lecture du PDF…');
+        const mode = target ? 'image' : await askPdfMode(f.name);
+        if (!mode) continue;
+        if (mode === 'text') {
+          const r = await pdfToText(f);
+          if (r) {
+            addBlock('text', { text: r.text, size: 'S' });
+            toast(r.pages > r.used ? `Texte importé (${r.used} premières pages sur ${r.pages})` : 'Texte du PDF importé, remis en forme pour le ticket ✓');
+            continue;
+          }
+          toast('Ce PDF est une image scannée, sans texte à lire : je l\'importe en image', true);
+        }
         const imgs = await pdfToImages(f);
         imgs.forEach((src, i) => {
           if (i === 0 && target) { target.src = src; target.render = 'net'; target = null; renderBlocks(); changed(); }
@@ -541,6 +613,20 @@ async function importFiles(files, target) {
       } else toast(`« ${f.name} » : je sais lire les photos, PDF, .md et .txt`, true);
     } catch (e) { toast(`Impossible d'ouvrir « ${f.name} » : ${e.message || e}`, true); }
   }
+}
+function askPdfMode(name) {
+  return new Promise(resolve => {
+    const sheet = $('aiSheet'); sheet.innerHTML = '';
+    const done = v => { $('aiBg').classList.remove('open'); $('aiBg').onclick = null; resolve(v); };
+    const choice = (icon, title, desc, v) => h('button', { class: 'result', style: 'display:flex;gap:14px;align-items:center;width:100%;border:0;text-align:left;margin:8px 0;cursor:pointer', onclick: () => done(v) },
+      h('span', { style: 'font-size:30px' }, icon), h('span', {}, h('b', { style: 'display:block;font-size:17px' }, title), h('span', { class: 'hint', style: 'margin:0' }, desc)));
+    sheet.append(h('h3', {}, 'Importer « ' + (name || 'PDF') + ' »'),
+      choice('📝', 'Le texte (recommandé)', 'Le texte est extrait et remis en forme pour 48 mm : lisible, et modifiable ensuite.', 'text'),
+      choice('🖼️', 'L\'image des pages', 'Pour un visuel, un plan, un dessin. Une page A4 de texte sera illisible.', 'image'),
+      h('button', { class: 'use', style: 'background:var(--bg);color:var(--ink)', onclick: () => done(null) }, 'Annuler'));
+    $('aiBg').classList.add('open');
+    $('aiBg').onclick = e => { if (e.target === $('aiBg')) done(null); };
+  });
 }
 let replaceTarget = null;
 function replaceImage(b) { replaceTarget = b; $('fileReplace').value = ''; $('fileReplace').click(); }
