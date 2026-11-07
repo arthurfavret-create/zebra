@@ -74,6 +74,10 @@
   .toggle i::after { content:""; position:absolute; left:2px; top:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 2px rgba(0,0,0,.2); }
   .toggle.on i { background:var(--mint); } .toggle.on i::after { left:16px; }
 
+  .side-fonts { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; padding:0 0 12px; overflow:visible; }
+  .side-fonts .chip { min-width:0; padding:6px 4px; }
+  .side-fonts .chip .aa { font-size:22px; }
+  .side-fonts .toggle { grid-column:1 / -1; justify-content:center; }
   /* ---------- Blocs ---------- */
   #blocks { margin-top:10px; }
   .block { position:relative; background:var(--card); box-shadow:var(--shadow); border-radius:20px; margin:12px 0; padding:14px 16px 14px 22px;
@@ -278,7 +282,6 @@
       <button class="mode" data-mode="dymo"><b>Étiquette</b><small>DYMO 54 × 101 mm</small></button>
     </div>
 
-    <div class="chips" id="fonts"></div>
 
     <div id="prepBanner"></div>
     <div id="labelEditor"></div>
@@ -301,6 +304,7 @@
   </section>
 
   <aside class="side">
+    <div class="chips side-fonts" id="fonts"></div>
     <div class="stage">
       <div class="slot"></div>
       <div class="paperwrap"><div class="paper" id="paper"></div></div>
@@ -344,8 +348,8 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070308"></script>
-<script src="label.js?v=202611070308"></script>
-<script src="app.js?v=202611070308"></script>
+<script src="engine.js?v=202611070311"></script>
+<script src="label.js?v=202611070311"></script>
+<script src="app.js?v=202611070311"></script>
 </body>
 </html>
