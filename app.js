@@ -1,5 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
+const APP_VERSION = '202611070154';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -830,6 +831,8 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
     b.onclick = () => { document.querySelectorAll('#chunkSeg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); try { localStorage.setItem('zebra-chunk', b.dataset.v); } catch (_) {} };
   });
 })();
+$('btnUpdate').onclick = () => { location.replace(location.pathname + '?v=' + Date.now()); };
+$('appVersion').textContent = 'Version ' + APP_VERSION.replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/, '$3/$2 $4:$5');
 $('btnCopyZpl').onclick = async () => {
   const zpl = buildZpl(await compose());
   try { await navigator.clipboard.writeText(zpl); toast(`ZPL copié (${Math.round(zpl.length / 1024)} Ko)`); }
