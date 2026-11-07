@@ -6,8 +6,11 @@ const TPE_MARGIN = 140;         // marge de déchirement haut et bas (≈ 17 mm)
 const TPE_SIDE = 8;             // marge latérale sur ticket
 const TPE_SEGMENT = 1600;       // hauteur max d'un format ZPL (on enchaîne plusieurs formats)
 const DYMO_H = 807;             // hauteur étiquette 101 mm
-const DYMO_LL = 848;            // pas 106 mm (étiquette + espace)
-const DYMO_LH = 41;             // décalage de l'espace de 5 mm
+// Espace entre deux étiquettes (réglable, 3,5 mm par défaut) : pas = 101 mm + espace
+const mmToDots = mm => Math.round(mm * 203 / 25.4);
+function dymoGap() { return Math.max(0, Math.min(10, +(state.dymoGap != null ? state.dymoGap : 3.5))); }
+function dymoLH() { return mmToDots(dymoGap()); }
+function dymoLL() { return DYMO_H + dymoLH(); }
 const DYMO_INSET = 10;          // zone utile x 10..374, y 10..797
 const BLOCK_GAP = 14;
 const MAX_COPIES = 50;
@@ -464,7 +467,7 @@ function buildZpl(pages) {
   if (state.mode === 'dymo') {
     pages.forEach(p => {
       const g = canvasToGFA(p, 0, p.height);
-      parts.push(`^XA\n^CI28\n^MNN\n^PW${PW}\n^LL${DYMO_LL}\n^LH0,${DYMO_LH}\n^FO0,0${g.zpl}^FS\n^PQ1\n^XZ`);
+      parts.push(`^XA\n^CI28\n^MNN\n^PW${PW}\n^LL${dymoLL()}\n^LH0,${dymoLH()}\n^FO0,0${g.zpl}^FS\n^PQ1\n^XZ`);
     });
   } else {
     const p = pages[0];

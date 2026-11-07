@@ -1,9 +1,9 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070201';
+const APP_VERSION = '202611070213';
 
 // ---------- État ----------
-let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
+let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel(), dymoGap: 3.5 };
 let nextId = 1;
 let selectedId = null;
 const imageCache = new Map();
@@ -833,6 +833,9 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
     b.onclick = () => { document.querySelectorAll('#chunkSeg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); try { localStorage.setItem('zebra-chunk', b.dataset.v); } catch (_) {} };
   });
 })();
+function syncGap() { $('gapVal').textContent = dymoGap().toFixed(1).replace('.', ',') + ' mm'; $('pitchVal').textContent = `pas de ${(101 + dymoGap()).toFixed(1).replace('.', ',')} mm`; }
+$('gapMinus').onclick = () => { state.dymoGap = Math.max(0, Math.round((dymoGap() - 0.5) * 10) / 10); syncGap(); save(); };
+$('gapPlus').onclick = () => { state.dymoGap = Math.min(10, Math.round((dymoGap() + 0.5) * 10) / 10); syncGap(); save(); };
 $('btnUpdate').onclick = () => { location.replace(location.pathname + '?v=' + Date.now()); };
 $('appVersion').textContent = 'Version ' + APP_VERSION.replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/, '$3/$2 $4:$5');
 $('btnCopyZpl').onclick = async () => {
@@ -896,6 +899,8 @@ if (channel) channel.onmessage = e => {
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
+if (state.dymoGap == null) state.dymoGap = 3.5;
+syncGap();
 importFromHash();
 window.addEventListener('hashchange', () => { if (importFromHash()) { syncTop(); renderBlocks(); changed(); } });
 syncTop();
