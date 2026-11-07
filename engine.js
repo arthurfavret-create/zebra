@@ -150,12 +150,14 @@ function renderTextBlock(ctx, b, W, draw) {
 function listItems(b) {
   return (b.items || '').split('\n').map(s => s.trim()).filter(Boolean);
 }
+let LIST_SCALE = 1; // agrandissement automatique des listes sur ticket (voir compose)
 function renderListBlock(ctx, b, W, draw) {
   const family = FONTS[state.font].css;
-  const base = SIZES[b.size] || SIZES.M;
+  const base = Math.round((SIZES[b.size] || SIZES.M) * 1.15 * LIST_SCALE);
   let y = 0;
   const title = fillVars(b.title || '').trim();
   if (title) {
+    y += Math.round(base * 0.9); // de l'air au-dessus du titre
     y += layoutRich(ctx, parseInline(title), 0, W, y, Math.round(base * 1.4), family, 'left', draw, true);
     y += 6;
     if (draw) { ctx.fillStyle = '#000'; ctx.fillRect(0, y, W, 3); }
@@ -175,7 +177,7 @@ function renderListBlock(ctx, b, W, draw) {
       else ctx.strokeRect(1.5, by, box - 1, box - 1);
       if (done) { ctx.beginPath(); ctx.lineWidth = 3; ctx.moveTo(5, by + box * 0.5); ctx.lineTo(box * 0.42, by + box - 5); ctx.lineTo(box - 3, by + 4); ctx.stroke(); }
     }
-    y += Math.max(h, box) + (i < items.length - 1 ? Math.round(base * 0.5) : 0);
+    y += Math.max(h, box) + (i < items.length - 1 ? Math.round(base * 0.7) : 0);
   });
   return Math.max(y, 1);
 }
@@ -347,7 +349,22 @@ async function compose() {
     return pages;
   }
   const g = contentGeometry();
-  const strip = await composeStrip(g.W);
+  LIST_SCALE = 1;
+  let strip = await composeStrip(g.W);
+  // Ticket avec liste : on agrandit la liste pour occuper les 15 cm minimum plutôt que laisser du blanc
+  if (state.mode !== 'dymo' && state.blocks.some(b => b.type === 'list')) {
+    const target = TPE_LIST_MIN - TPE_MARGIN * 2;
+    if (strip.height < target) {
+      let lo = 1, hi = 1.7;
+      for (let k = 0; k < 7; k++) {
+        LIST_SCALE = (lo + hi) / 2;
+        const s = await composeStrip(g.W);
+        if (s.height <= target) lo = LIST_SCALE; else hi = LIST_SCALE;
+      }
+      LIST_SCALE = lo;
+      strip = await composeStrip(g.W);
+    }
+  }
   const pages = [];
   if (state.mode === 'dymo') {
     for (const [a, z] of slice(strip, g.pageH, strip._bounds)) {
