@@ -10,8 +10,10 @@ const DYMO_LL = 848;            // pas 106 mm (étiquette 101 mm + espace 5 mm) 
 const DYMO_LH = 41;             // décalage de l'espace de 5 mm
 // Formats d'étiquettes (largeur × longueur en mm, espace entre deux étiquettes)
 const LABEL_SIZES = [
-  { w: 54, h: 101, gap: 5 }, { w: 54, h: 70, gap: 3 }, { w: 36, h: 89, gap: 3 },
-  { w: 28, h: 89, gap: 3 }, { w: 32, h: 57, gap: 3 }, { w: 25, h: 54, gap: 3 },
+  { w: 54, h: 101, gap: 5 },   // validé à l'impression : ne pas toucher
+  // autres formats : 5 mm d'espace pour que la déchirure tombe entre deux étiquettes, pas sur le bord
+  { w: 54, h: 70, gap: 5 }, { w: 36, h: 89, gap: 5 },
+  { w: 28, h: 89, gap: 5 }, { w: 32, h: 57, gap: 5 }, { w: 25, h: 54, gap: 5 },
 ];
 function labelFmt() { const f = state.labelFmt || {}; return { w: +f.w || 54, h: +f.h || 101, gap: f.gap != null ? +f.gap : 5 }; }
 // Dimensions en points : largeur imprimée (48 mm max, centrée), hauteur, pas (^LL) et décalage (^LH)

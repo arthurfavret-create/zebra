@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070322';
+const APP_VERSION = '202611070334';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1145,6 +1145,8 @@ if (channel) channel.onmessage = e => {
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
+// anciens réglages : les formats courants passent de 3 à 5 mm d'espace
+if (state.labelFmt && +state.labelFmt.gap === 3 && LABEL_SIZES.some(s => s.w === +state.labelFmt.w && s.h === +state.labelFmt.h && !(s.w === 54 && s.h === 101))) state.labelFmt.gap = 5;
 delete state.dymoGap;
 importFromHash();
 window.addEventListener('hashchange', () => { if (importFromHash()) { syncTop(); renderBlocks(); changed(); } });
