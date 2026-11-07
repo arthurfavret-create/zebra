@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070345';
+const APP_VERSION = '202611070350';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1045,15 +1045,15 @@ async function newDrawing() {
   const g = contentGeometry();
   const r = await openDrawing({ width: g.W, height: state.mode === 'dymo' ? Math.min(g.pageH, 420) : 320, title: 'Nouveau dessin' });
   if (!r || !r.src) return;
-  addBlock('image', { src: r.src, render: 'ink', kind: 'draw', strokes: r.strokes, drawH: r.height, width: 100, gap: 14 });
+  addBlock('image', { src: r.src, render: 'ink', kind: 'draw', strokes: r.strokes, drawH: r.height, drawW: r.width, width: 100, gap: 14 });
   toast('Dessin ajouté ✏️');
 }
 async function editDrawing(b) {
   const g = contentGeometry();
-  const r = await openDrawing({ width: g.W, height: b.drawH || 320, strokes: b.strokes || [], title: 'Modifier le dessin' });
+  const r = await openDrawing({ width: g.W, height: b.drawH || 320, strokes: b.strokes || [], strokesWidth: b.drawW || g.W, title: 'Modifier le dessin' });
   if (!r) return;
   if (!r.src) { remove(b); return; }
-  Object.assign(b, { src: r.src, strokes: r.strokes, drawH: r.height }); renderBlocks(); changed();
+  Object.assign(b, { src: r.src, strokes: r.strokes, drawH: r.height, drawW: r.width }); selectedId = b.id; renderBlocks(); changed();
 }
 async function drawLabelIcon() {
   const L = state.label;
