@@ -31,15 +31,27 @@ const ZEBRA_SERVICE = '38eb4a80-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_WRITE   = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_READ    = '38eb4a81-c570-11e3-9507-0002a5d5c51b';
 
+// n = graisse du texte courant, b = graisse du gras (des polices un peu épaisses rendent mieux sur papier thermique)
 const FONTS = {
-  modern:     { label: 'Moderne',    css: '"ZS Inter", -apple-system, "Helvetica Neue", Arial, sans-serif', web: 'ZS Inter' },
-  poster:     { label: 'Affiche',    css: '"ZS Bricolage", "ZS Inter", sans-serif', web: 'ZS Bricolage', bold: 800 },
-  elegant:    { label: 'Élégante',   css: '"ZS Playfair", Georgia, serif', web: 'ZS Playfair' },
-  ticket:     { label: 'Ticket',     css: '"ZS Space Mono", "Courier New", monospace', web: 'ZS Space Mono' },
-  typewriter: { label: 'Machine',    css: '"ZS Special Elite", "Courier New", monospace', web: 'ZS Special Elite' },
-  hand:       { label: 'Manuscrite', css: '"ZS Caveat", cursive', web: 'ZS Caveat' },
-  mono:       { label: 'Mono', css: '"ZS Space Mono", "Courier New", monospace', web: 'ZS Space Mono', hidden: true }, // code inline
+  modern:     { label: 'Moderne',    css: '"ZS Inter", -apple-system, "Helvetica Neue", Arial, sans-serif', web: 'ZS Inter', n: 400, b: 700 },
+  montserrat: { label: 'Géométrique', css: '"ZS Montserrat", "ZS Inter", sans-serif', web: 'ZS Montserrat', n: 500, b: 800 },
+  nunito:     { label: 'Arrondie',   css: '"ZS Nunito", "ZS Inter", sans-serif', web: 'ZS Nunito', n: 600, b: 800 },
+  fredoka:    { label: 'Ronde',      css: '"ZS Fredoka", "ZS Nunito", sans-serif', web: 'ZS Fredoka', n: 500, b: 700 },
+  poster:     { label: 'Affiche',    css: '"ZS Bricolage", "ZS Inter", sans-serif', web: 'ZS Bricolage', n: 400, b: 800 },
+  oswald:     { label: 'Étroite',    css: '"ZS Oswald", "ZS Inter", sans-serif', web: 'ZS Oswald', n: 500, b: 700 },
+  bebas:      { label: 'Capitales',  css: '"ZS Bebas", "ZS Oswald", sans-serif', web: 'ZS Bebas', n: 400, b: 400 },
+  elegant:    { label: 'Élégante',   css: '"ZS Playfair", Georgia, serif', web: 'ZS Playfair', n: 400, b: 700 },
+  dmserif:    { label: 'Magazine',   css: '"ZS DM Serif", "ZS Playfair", Georgia, serif', web: 'ZS DM Serif', n: 400, b: 400 },
+  merri:      { label: 'Livre',      css: '"ZS Merriweather", Georgia, serif', web: 'ZS Merriweather', n: 400, b: 900 },
+  slab:       { label: 'Slab',       css: '"ZS Roboto Slab", Georgia, serif', web: 'ZS Roboto Slab', n: 500, b: 800 },
+  ticket:     { label: 'Ticket',     css: '"ZS Space Mono", "Courier New", monospace', web: 'ZS Space Mono', n: 400, b: 700 },
+  typewriter: { label: 'Machine',    css: '"ZS Special Elite", "Courier New", monospace', web: 'ZS Special Elite', n: 400, b: 400 },
+  hand:       { label: 'Manuscrite', css: '"ZS Caveat", cursive', web: 'ZS Caveat', n: 400, b: 700 },
+  patrick:    { label: 'Feutre',     css: '"ZS Patrick Hand", "ZS Caveat", cursive', web: 'ZS Patrick Hand', n: 400, b: 400 },
+  pacifico:   { label: 'Script',     css: '"ZS Pacifico", cursive', web: 'ZS Pacifico', n: 400, b: 400 },
+  mono:       { label: 'Mono', css: '"ZS Space Mono", "Courier New", monospace', web: 'ZS Space Mono', n: 400, b: 700, hidden: true }, // code inline
 };
+const FONT_BY_CSS = Object.fromEntries(Object.values(FONTS).map(f => [f.css, f]));
 // anciennes polices → nouvelles
 const FONT_ALIASES = { sans: 'modern', serif: 'elegant', machine: 'typewriter', marker: 'poster' };
 function fontKey(k) { return FONTS[k] ? k : FONT_ALIASES[k] || 'modern'; }
@@ -67,7 +79,9 @@ function parseInline(s) {
 }
 function fontFor(run, size, family, forceBold) {
   const fam = run.mono ? FONTS.mono.css : family;
-  return `${run.i ? 'italic ' : ''}${(run.b || forceBold) ? 'bold ' : ''}${size}px ${fam}`;
+  const f = FONT_BY_CSS[fam] || {};
+  const w = (run.b || forceBold) ? (f.b || 700) : (f.n || 400);
+  return `${run.i ? 'italic ' : ''}${w} ${size}px ${fam}`;
 }
 // Mise en page d'un paragraphe riche ; renvoie la hauteur utilisée
 function layoutRich(ctx, runs, x, width, y, size, family, align, draw, forceBold) {
@@ -435,7 +449,7 @@ function contentGeometry() {
 async function ensureFonts() {
   const used = new Set([fontKey(state.font)]); state.blocks.forEach(b => { if (b.font) used.add(fontKey(b.font)); });
   const loads = [];
-  used.forEach(k => { const f = FONTS[k]; if (f && f.web) { loads.push(document.fonts.load(`20px "${f.web}"`)); loads.push(document.fonts.load(`bold 20px "${f.web}"`)); } });
+  used.forEach(k => { const f = FONTS[k]; if (f && f.web) { loads.push(document.fonts.load(`${f.n || 400} 20px "${f.web}"`)); loads.push(document.fonts.load(`${f.b || 700} 20px "${f.web}"`)); } });
   try { await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 2500))]); } catch (_) {}
 }
 // Dessine tous les blocs sur une longue bande de largeur W

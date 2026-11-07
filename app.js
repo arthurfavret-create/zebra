@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611071312';
+const APP_VERSION = '202611071437';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1196,8 +1196,8 @@ function syncTop() {
   const f = $('fonts'); f.innerHTML = '';
   Object.entries(FONT_CHIPS).forEach(([k, label]) => {
     f.append(h('button', { class: 'chip' + (fontKey(state.font) === k ? ' active' : ''), onclick: () => { state.font = k; syncTop(); changed(); refreshThumbs(); document.fonts.load(`bold 40px ${FONTS[k].css}`).then(() => { if (state.mode === 'dymo') renderLabelEditor(); changed(); }); } },
-      h('span', { class: 'aa', style: `font-family:${FONTS[k].css};font-weight:${FONTS[k].bold || 700}` }, 'Aa'),
-      h('span', { class: 'fname', style: `font-family:${FONTS[k].css}` }, label)));
+      h('span', { class: 'aa', style: `font-family:${FONTS[k].css};font-weight:${FONTS[k].b || 700}` }, 'Aa'),
+      h('span', { class: 'fname', style: `font-family:${FONTS[k].css};font-weight:${FONTS[k].n || 400}` }, label)));
   });
   $('labelEditor').style.display = state.mode === 'dymo' ? '' : 'none';
   renderPrepBanner();
@@ -1306,7 +1306,7 @@ window.addEventListener('scroll', () => document.querySelector('header').classLi
 if (!load()) state.blocks = starter();
 state.font = fontKey(state.font);
 // toutes les polices chargées d'avance : pastilles fidèles et aperçu juste
-Promise.all(Object.values(FONTS).flatMap(f => [document.fonts.load(`400 20px "${f.web}"`), document.fonts.load(`${f.bold || 700} 20px "${f.web}"`)])).then(() => { syncTop(); changed(); }).catch(() => {});
+Promise.all(Object.values(FONTS).flatMap(f => [document.fonts.load(`${f.n || 400} 20px "${f.web}"`), document.fonts.load(`${f.b || 700} 20px "${f.web}"`)])).then(() => { syncTop(); changed(); }).catch(() => {});
 // anciens réglages : les formats courants passent de 3 à 5 mm d'espace
 if (state.labelFmt && +state.labelFmt.w === 54 && +state.labelFmt.h === 70 && +state.labelFmt.gap < 6.5) state.labelFmt.gap = 6.5;
 delete state.dymoGap;

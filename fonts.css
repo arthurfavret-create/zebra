@@ -1,4 +1,4 @@
-/* Polices intégrées (Fontsource, licences OFL / dans fonts/LICENSE-*) */
+/* Polices intégrées (Fontsource, licences OFL / Apache dans fonts/LICENSE-*) */
 @font-face { font-family:'ZS Inter'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/inter-latin-400-normal.woff2) format('woff2'); }
 @font-face { font-family:'ZS Inter'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/inter-latin-700-normal.woff2) format('woff2'); }
 @font-face { font-family:'ZS Bricolage'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/bricolage-grotesque-latin-400-normal.woff2) format('woff2'); }
@@ -10,3 +10,19 @@
 @font-face { font-family:'ZS Special Elite'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/special-elite-latin-400-normal.woff2) format('woff2'); }
 @font-face { font-family:'ZS Caveat'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/caveat-latin-400-normal.woff2) format('woff2'); }
 @font-face { font-family:'ZS Caveat'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/caveat-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Montserrat'; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/montserrat-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Montserrat'; font-style:normal; font-weight:800; font-display:swap; src:url(fonts/montserrat-latin-800-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Nunito'; font-style:normal; font-weight:600; font-display:swap; src:url(fonts/nunito-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Nunito'; font-style:normal; font-weight:800; font-display:swap; src:url(fonts/nunito-latin-800-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Oswald'; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/oswald-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Oswald'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/oswald-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Bebas'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/bebas-neue-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Roboto Slab'; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/roboto-slab-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Roboto Slab'; font-style:normal; font-weight:800; font-display:swap; src:url(fonts/roboto-slab-latin-800-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Merriweather'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/merriweather-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Merriweather'; font-style:normal; font-weight:900; font-display:swap; src:url(fonts/merriweather-latin-900-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS DM Serif'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/dm-serif-display-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Fredoka'; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/fredoka-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Fredoka'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/fredoka-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Pacifico'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/pacifico-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Patrick Hand'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/patrick-hand-latin-400-normal.woff2) format('woff2'); }

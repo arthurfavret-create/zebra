@@ -123,8 +123,8 @@ function fitStack(ctx, T, L, Wt, Ht, family) {
   while (lo <= hi) {
     const s = (lo + hi) >> 1;
     const st = stackFor(ctx, T, L, s, Wt, family);
-    const wordOk = !T.title || longestWord(ctx, T.title, `bold ${s}px ${family}`) <= Wt;
-    const subOk = !T.subtitle || longestWord(ctx, T.subtitle, `${st.sub}px ${family}`) <= Wt;
+    const wordOk = !T.title || longestWord(ctx, T.title, `${(FONT_BY_CSS[family] || {}).b || 700} ${s}px ${family}`) <= Wt;
+    const subOk = !T.subtitle || longestWord(ctx, T.subtitle, `${(FONT_BY_CSS[family] || {}).n || 400} ${st.sub}px ${family}`) <= Wt;
     if (st.total <= Ht && wordOk && subOk && st.titleLines <= 3) { best = { s, st }; lo = s + 1; }
     else hi = s - 1;
   }

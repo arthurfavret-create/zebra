@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#FFF6EA">
 <title>Zebra Studio</title>
-<link rel="stylesheet" href="fonts.css?v=202611071312">
+<link rel="stylesheet" href="fonts.css?v=202611071437">
 <style>
   :root {
     --bg:#FFF6EA; --card:#FFFFFF; --ink:#1A1823; --mute:#8A8494; --line:#EFE6D8;
@@ -74,10 +74,10 @@
   .toggle i::after { content:""; position:absolute; left:2px; top:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 2px rgba(0,0,0,.2); }
   .toggle.on i { background:var(--mint); } .toggle.on i::after { left:16px; }
 
-  .side-fonts { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; padding:0 0 12px; overflow:visible; }
+  .side-fonts { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; padding:0 0 12px; overflow:visible; }
   .side-fonts .chip { min-width:0; padding:6px 4px; }
-  .side-fonts .chip .aa { font-size:26px; line-height:1.1; }
-  .chip .fname { display:block; font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .side-fonts .chip .aa { font-size:22px; line-height:1.15; }
+  .chip .fname { display:block; font-size:12px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .side-fonts .toggle { grid-column:1 / -1; justify-content:center; }
   /* ---------- Blocs ---------- */
   #blocks { margin-top:10px; }
@@ -321,11 +321,11 @@
       <button class="add" data-add="text"><i style="--c:var(--violet)">Aa</i>Texte</button>
       <button class="add" data-add="list"><i style="--c:var(--orange)">☑︎</i>Liste</button>
       <button class="add" data-add="file"><i style="--c:var(--pink)">＋</i>Photo / fichier</button>
+      <button class="add" data-add="draw"><i style="--c:#111;font-size:20px">✏️</i>Dessin</button>
       <button class="add" data-add="paste"><i style="--c:#5B6CFF">⎘</i>Coller</button>
       <button class="add" data-add="qr"><i style="--c:var(--blue)">▦</i>QR code</button>
       <button class="add" data-add="barcode"><i style="--c:#111;font-size:18px;letter-spacing:-1px">▍▏▍</i>Code-barres</button>
       <button class="add" data-add="sep"><i style="--c:var(--yellow)">✂︎</i>Trait</button>
-      <button class="add" data-add="draw"><i style="--c:#111;font-size:20px">✏️</i>Dessin</button>
       <button class="add" data-add="space"><i style="--c:var(--mint)">↕</i>Espace</button>
     </div>
     <p class="hint-move">Astuce : appui long sur un bloc pour le déplacer</p>
@@ -381,9 +381,9 @@
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
 <script src="lib/JsBarcode.code128.min.js"></script>
-<script src="engine.js?v=202611071312"></script>
-<script src="draw.js?v=202611071312"></script>
-<script src="label.js?v=202611071312"></script>
-<script src="app.js?v=202611071312"></script>
+<script src="engine.js?v=202611071437"></script>
+<script src="draw.js?v=202611071437"></script>
+<script src="label.js?v=202611071437"></script>
+<script src="app.js?v=202611071437"></script>
 </body>
 </html>
