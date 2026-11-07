@@ -440,16 +440,17 @@ async function attach() {
   const server = await withTimeout(device.gatt.connect(), 15000, 'connexion');
   const service = await withTimeout(server.getPrimaryService(ZEBRA_SERVICE), 10000, 'service Zebra');
   writeChar = await withTimeout(service.getCharacteristic(ZEBRA_WRITE), 10000, 'canal d\'écriture');
-  try {
-    const rc = await service.getCharacteristic(ZEBRA_READ); await rc.startNotifications();
-    rc.addEventListener('characteristicvaluechanged', e => log('Imprimante : ' + new TextDecoder().decode(e.target.value).trim()));
-  } catch (_) {}
   setConn(device.name || 'Zebra', 'on');
+  // lecture des réponses de l'imprimante : facultatif, sans jamais bloquer
+  service.getCharacteristic(ZEBRA_READ).then(rc => rc.startNotifications().then(() =>
+    rc.addEventListener('characteristicvaluechanged', e => log('Imprimante : ' + new TextDecoder().decode(e.target.value).trim())))).catch(() => {});
 }
 async function connect() {
   if (!('bluetooth' in navigator)) { toast('Ouvre cette page dans Bluefy pour imprimer 📱', true); setConn('Bluefy requis', 'err'); return false; }
   try {
     setConn('Recherche…');
+    if (device && device.gatt.connected) { try { device.gatt.disconnect(); } catch (_) {} }
+    writeChar = null;
     device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [ZEBRA_SERVICE] });
     device.addEventListener('gattserverdisconnected', () => { writeChar = null; setConn('Connecter'); log('Imprimante déconnectée.'); });
     setConn('Connexion…');
@@ -468,12 +469,15 @@ async function ensureConnected() {
   return connect();
 }
 function chunkSize() { try { return +(localStorage.getItem('zebra-chunk') || 20); } catch (_) { return 20; } }
-async function send(text, onProgress) {
-  const data = new TextEncoder().encode(text), size = chunkSize();
+let cancelSend = false;
+async function send(text, onProgress, size) {
+  const data = new TextEncoder().encode(text); size = size || chunkSize();
   const t0 = performance.now();
   for (let i = 0; i < data.length; i += size) {
+    if (cancelSend) throw new Error('annulé');
     const part = data.slice(i, i + size);
-    if (writeChar.writeValueWithResponse) await writeChar.writeValueWithResponse(part); else await writeChar.writeValue(part);
+    const w = writeChar.writeValueWithResponse ? writeChar.writeValueWithResponse(part) : writeChar.writeValue(part);
+    await withTimeout(w, 6000, 'envoi d\'un paquet');
     if ((i / size) % 8 === 0) onProgress(i / data.length);
   }
   onProgress(1);
@@ -493,7 +497,8 @@ function confetti() {
 }
 $('btnConnect').onclick = connect;
 $('btnPrint').onclick = async () => {
-  if (printing) return;
+  if (printing) { cancelSend = true; $('printLabel').textContent = 'Annulation…'; return; }
+  cancelSend = false;
   if (!state.blocks.length) { toast('Rien à imprimer pour l\'instant', true); return; }
   printing = true;
   const label = $('printLabel'), fill = $('fill'), paper = $('paper');
@@ -503,14 +508,25 @@ $('btnPrint').onclick = async () => {
     label.textContent = 'Connexion…';
     if (!(await ensureConnected())) { label.textContent = 'Imprimer'; return; }
     paper.classList.add('printing');
-    await send(zpl, p => { fill.style.width = Math.round(p * 100) + '%'; label.textContent = `Envoi ${Math.round(p * 100)} %`; });
+    const prog = p => { fill.style.width = Math.round(p * 100) + '%'; label.textContent = `Envoi ${Math.round(p * 100)} % · toucher pour annuler`; };
+    try { await send(zpl, prog); }
+    catch (e) {
+      if (cancelSend || chunkSize() <= 20) throw e;
+      // le mode rapide coince : on repasse en mode sûr et on relance une fois
+      try { localStorage.setItem('zebra-chunk', '20'); } catch (_) {}
+      document.querySelectorAll('#chunkSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === '20'));
+      toast('Envoi bloqué en mode rapide : je repasse en mode sûr et je relance');
+      if (!(await ensureConnected())) throw e;
+      await send('^XA^XZ\n' + zpl, prog, 20);
+    }
     label.textContent = 'Imprimé ✓'; confetti();
     if (state.mode === 'dymo') toast('Pense à bien caler l\'étiquette sous la tête 🏷️');
     setTimeout(() => { label.textContent = 'Imprimer'; fill.style.width = '0'; }, 2200);
   } catch (e) {
     label.textContent = 'Imprimer'; fill.style.width = '0';
-    toast('Échec d\'envoi : ' + (e.message || e) + ' — essaie la vitesse « Sûr » dans les réglages', true);
-  } finally { printing = false; paper.classList.remove('printing'); }
+    if (cancelSend) toast('Impression annulée');
+    else { toast('Échec d\'envoi : ' + (e.message || e) + '. Éteins et rallume la Zebra, puis reconnecte-la.', true); writeChar = null; setConn('Reconnecter', 'err'); }
+  } finally { printing = false; cancelSend = false; paper.classList.remove('printing'); }
 };
 
 
@@ -720,7 +736,9 @@ function importFromHash() {
   save();
   const n = groups.reduce((s, g) => s + g[1].length, 0);
   setTimeout(() => {
-    if (!('bluetooth' in navigator)) toast('Liste reçue. Pour imprimer, ouvre ce lien dans Bluefy 📱', true);
+    if (!('bluetooth' in navigator)) toast('Liste reçue. Pour imprimer, ouvre ce lien dans Bluefy', true, { label: 'Copier le lien', run: async () => {
+      try { await navigator.clipboard.writeText(location.href); toast('Lien copié : colle-le dans la barre d\'adresse de Bluefy'); } catch (_) { toast('Copie refusée', true); }
+    } });
     else toast(`« ${data.t || 'Liste'} » reçue : ${n} éléments`, false, { label: 'Annuler', run: () => { state.blocks = backup; renderBlocks(); changed(); } });
   }, 400);
   return true;
