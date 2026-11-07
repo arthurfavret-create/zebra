@@ -6,15 +6,13 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#FFF6EA">
 <title>Zebra Studio</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Caveat:wght@400;700&family=Permanent+Marker&family=Special+Elite&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts.css?v=202611071312">
 <style>
   :root {
     --bg:#FFF6EA; --card:#FFFFFF; --ink:#1A1823; --mute:#8A8494; --line:#EFE6D8;
     --pink:#FF4F8B; --orange:#FF8A3D; --yellow:#FFC93C; --mint:#2FD39A; --violet:#7B61FF; --blue:#3EA6FF;
     --shadow:0 1px 2px rgba(26,24,35,.06), 0 8px 24px rgba(26,24,35,.07);
-    --display:"Bricolage Grotesque", -apple-system, sans-serif;
+    --display:"ZS Bricolage", -apple-system, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#15131C; --card:#221F2B; --ink:#F4F1FA; --mute:#9C95AA; --line:#322E3D;
@@ -78,7 +76,8 @@
 
   .side-fonts { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; padding:0 0 12px; overflow:visible; }
   .side-fonts .chip { min-width:0; padding:6px 4px; }
-  .side-fonts .chip .aa { font-size:22px; }
+  .side-fonts .chip .aa { font-size:26px; line-height:1.1; }
+  .chip .fname { display:block; font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .side-fonts .toggle { grid-column:1 / -1; justify-content:center; }
   /* ---------- Blocs ---------- */
   #blocks { margin-top:10px; }
@@ -132,12 +131,11 @@
 
 
   /* ---------- Éditeur d'étiquette ---------- */
-  .tpls { display:flex; gap:10px; overflow-x:auto; padding:6px 2px 10px; scrollbar-width:none; }
-  .tpls::-webkit-scrollbar { display:none; }
-  .tpl { flex:none; width:132px; border:2px solid transparent; background:var(--card); box-shadow:var(--shadow); border-radius:16px; padding:8px 8px 6px; font-weight:700; font-size:13px; }
+  .tpls { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; padding:6px 0 10px; } /* tous visibles, sans glisser */
+  .tpl { min-width:0; border:2px solid transparent; background:var(--card); box-shadow:var(--shadow); border-radius:16px; padding:8px 8px 6px; font-weight:700; font-size:13px; }
   .tpl.active { border-color:var(--pink); }
-  .tpl .mini { height:70px; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
-  .tpl canvas { max-width:100%; max-height:70px; border-radius:6px; box-shadow:0 0 0 1px var(--line); background:#fff; }
+  .tpl .mini { height:60px; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
+  .tpl canvas { max-width:100%; max-height:60px; border-radius:6px; box-shadow:0 0 0 1px var(--line); background:#fff; }
   .tpl .free { font-size:30px; }
   .lcard { background:var(--card); box-shadow:var(--shadow); border-radius:20px; padding:16px 18px; margin:12px 0; }
   .lcard .big { width:100%; border:0; outline:0; background:transparent; font-family:var(--display); font-weight:800; font-size:30px; padding:2px 0 6px; border-bottom:2px solid var(--line); }
@@ -218,8 +216,10 @@
   @keyframes pulse { to { opacity:.35; } }
 
   /* ---------- Ajout ---------- */
-  .adds { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:18px; }
-  @media (min-width:1000px) { .adds { grid-template-columns:repeat(4, 1fr); } }
+  .adds { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:18px; } /* 9 outils = 3 × 3 */
+  .bcview { display:flex; justify-content:center; background:#fff; border-radius:12px; padding:10px; margin-top:8px; min-height:40px; align-items:center; }
+  .bcview canvas { max-width:100%; image-rendering:pixelated; }
+  .block[data-type=barcode] { --c:#555; }
   .block[data-type=list] { --c:var(--orange); }
   .block .title { width:100%; border:0; outline:0; background:transparent; font-family:var(--display); font-weight:800; font-size:22px; padding:0 0 6px; }
   .block .title::placeholder { color:var(--mute); font-weight:700; }
@@ -321,7 +321,9 @@
       <button class="add" data-add="text"><i style="--c:var(--violet)">Aa</i>Texte</button>
       <button class="add" data-add="list"><i style="--c:var(--orange)">☑︎</i>Liste</button>
       <button class="add" data-add="file"><i style="--c:var(--pink)">＋</i>Photo / fichier</button>
+      <button class="add" data-add="paste"><i style="--c:#5B6CFF">⎘</i>Coller</button>
       <button class="add" data-add="qr"><i style="--c:var(--blue)">▦</i>QR code</button>
+      <button class="add" data-add="barcode"><i style="--c:#111;font-size:18px;letter-spacing:-1px">▍▏▍</i>Code-barres</button>
       <button class="add" data-add="sep"><i style="--c:var(--yellow)">✂︎</i>Trait</button>
       <button class="add" data-add="draw"><i style="--c:#111;font-size:20px">✏️</i>Dessin</button>
       <button class="add" data-add="space"><i style="--c:var(--mint)">↕</i>Espace</button>
@@ -378,9 +380,10 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611070433"></script>
-<script src="draw.js?v=202611070433"></script>
-<script src="label.js?v=202611070433"></script>
-<script src="app.js?v=202611070433"></script>
+<script src="lib/JsBarcode.code128.min.js"></script>
+<script src="engine.js?v=202611071312"></script>
+<script src="draw.js?v=202611071312"></script>
+<script src="label.js?v=202611071312"></script>
+<script src="app.js?v=202611071312"></script>
 </body>
 </html>

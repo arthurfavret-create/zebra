@@ -32,13 +32,17 @@ const ZEBRA_WRITE   = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_READ    = '38eb4a81-c570-11e3-9507-0002a5d5c51b';
 
 const FONTS = {
-  sans:     { label: 'Sans (Helvetica)', css: '-apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif' },
-  serif:    { label: 'Serif (Georgia)',  css: 'Georgia, "Times New Roman", serif' },
-  mono:     { label: 'Ticket (Courier)', css: '"Courier New", Courier, monospace' },
-  machine:  { label: 'Machine à écrire', css: '"Special Elite", "Courier New", monospace', web: 'Special Elite' },
-  hand:     { label: 'Manuscrite',       css: '"Caveat", cursive', web: 'Caveat' },
-  marker:   { label: 'Marqueur',         css: '"Permanent Marker", cursive', web: 'Permanent Marker' },
+  modern:     { label: 'Moderne',    css: '"ZS Inter", -apple-system, "Helvetica Neue", Arial, sans-serif', web: 'ZS Inter' },
+  poster:     { label: 'Affiche',    css: '"ZS Bricolage", "ZS Inter", sans-serif', web: 'ZS Bricolage', bold: 800 },
+  elegant:    { label: 'Élégante',   css: '"ZS Playfair", Georgia, serif', web: 'ZS Playfair' },
+  ticket:     { label: 'Ticket',     css: '"ZS Space Mono", "Courier New", monospace', web: 'ZS Space Mono' },
+  typewriter: { label: 'Machine',    css: '"ZS Special Elite", "Courier New", monospace', web: 'ZS Special Elite' },
+  hand:       { label: 'Manuscrite', css: '"ZS Caveat", cursive', web: 'ZS Caveat' },
+  mono:       { label: 'Mono', css: '"ZS Space Mono", "Courier New", monospace', web: 'ZS Space Mono', hidden: true }, // code inline
 };
+// anciennes polices → nouvelles
+const FONT_ALIASES = { sans: 'modern', serif: 'elegant', machine: 'typewriter', marker: 'poster' };
+function fontKey(k) { return FONTS[k] ? k : FONT_ALIASES[k] || 'modern'; }
 const SIZES = { S: 20, M: 25, L: 31, XL: 40 };
 
 // ---------- Rendu : texte Markdown ----------
@@ -131,7 +135,7 @@ function renderTextBlock(ctx, b, W, draw) {
     parseInline = s => pi(s).map(r => Object.assign(r, { tone: true }));
     try { return renderTextBlock(ctx, Object.assign({}, b, { tone: false, _toned: true }), W, draw); } finally { parseInline = pi; }
   }
-  const family = FONTS[b.font || state.font].css;
+  const family = FONTS[fontKey(b.font || state.font)].css;
   const base = SIZES[b.size] || SIZES.M;
   const lines = fillVars(b.text || '').replace(/\r/g, '').split('\n');
   let y = 0;
@@ -256,7 +260,7 @@ function listItems(b) {
 }
 let LIST_SCALE = 1; // agrandissement automatique des listes sur ticket (voir compose)
 function renderListBlock(ctx, b, W, draw) {
-  const family = FONTS[state.font].css;
+  const family = FONTS[fontKey(state.font)].css;
   const base = Math.round((SIZES[b.size] || SIZES.M) * 1.15 * LIST_SCALE);
   let y = 0;
   const title = fillVars(b.title || '').trim();
@@ -374,6 +378,20 @@ function getImage(b) {
   });
 }
 
+// ---------- Rendu : code-barres (Code 128) ----------
+function barcodeCanvas(b, W) {
+  const text = fillVars(b.text || '').trim();
+  if (!text || typeof JsBarcode !== 'function') return null;
+  const hgt = { S: 50, M: 80, L: 120 }[b.size] || 80;
+  const c = document.createElement('canvas');
+  for (const mw of [3, 2, 1]) { // barres les plus larges possibles qui tiennent dans la largeur
+    try { JsBarcode(c, text, { format: 'CODE128', width: mw, height: hgt, displayValue: !!b.showText, fontSize: 22, font: 'monospace', textMargin: 4, margin: 0, background: '#ffffff', lineColor: '#000000' }); }
+    catch (_) { return null; }
+    if (c.width <= W) break;
+  }
+  return c.width <= W ? c : null;
+}
+
 // ---------- Rendu : QR, séparateurs ----------
 function qrCanvas(b) {
   const text = fillVars(b.text || '').trim();
@@ -396,11 +414,11 @@ function drawSep(ctx, style, W, y, draw) {
     case 'double': ctx.fillRect(0, mid - 5, W, 2); ctx.fillRect(0, mid + 3, W, 2); break;
     case 'dots': for (let x = 3; x < W; x += 12) { ctx.beginPath(); ctx.arc(x, mid, 2.2, 0, Math.PI * 2); ctx.fill(); } break;
     case 'dashes': for (let x = 0; x < W; x += 18) ctx.fillRect(x, mid - 1, 10, 3); break;
-    case 'stars': ctx.font = `bold 24px ${FONTS.serif.css}`; ctx.textAlign = 'center'; ctx.fillText('✦   ✦   ✦', W / 2, mid + 9); ctx.textAlign = 'left'; break;
+    case 'stars': ctx.font = `bold 24px ${FONTS.elegant.css}`; ctx.textAlign = 'center'; ctx.fillText('✦   ✦   ✦', W / 2, mid + 9); ctx.textAlign = 'left'; break;
     case 'zigzag': ctx.lineWidth = 2; ctx.beginPath(); for (let x = 0, up = true; x <= W; x += 10, up = !up) ctx.lineTo(x, mid + (up ? -6 : 6)); ctx.stroke(); break;
     case 'scissors':
       for (let x = 30; x < W; x += 14) ctx.fillRect(x, mid - 1, 8, 2);
-      ctx.font = `22px ${FONTS.sans.css}`; ctx.fillText('✂', 0, mid + 8); break;
+      ctx.font = `22px ${FONTS.modern.css}`; ctx.fillText('✂', 0, mid + 8); break;
     default: ctx.fillRect(0, mid - 1, W, 2);
   }
   return h;
@@ -415,7 +433,7 @@ function contentGeometry() {
   return { W: PW - TPE_SIDE * 2, x: TPE_SIDE };
 }
 async function ensureFonts() {
-  const used = new Set([state.font]); state.blocks.forEach(b => { if (b.font) used.add(b.font); });
+  const used = new Set([fontKey(state.font)]); state.blocks.forEach(b => { if (b.font) used.add(fontKey(b.font)); });
   const loads = [];
   used.forEach(k => { const f = FONTS[k]; if (f && f.web) { loads.push(document.fonts.load(`20px "${f.web}"`)); loads.push(document.fonts.load(`bold 20px "${f.web}"`)); } });
   try { await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 2500))]); } catch (_) {}
@@ -435,9 +453,10 @@ async function composeStrip(W) {
     else if (b.type === 'qr') {
       const c = qrCanvas(b); if (!c) continue;
       let h = c.height;
-      if (b.caption) h += layoutRich(meas, parseInline(fillVars(b.caption)), 0, W, 0, SIZES.S, FONTS[state.font].css, 'center', false) + 4;
+      if (b.caption) h += layoutRich(meas, parseInline(fillVars(b.caption)), 0, W, 0, SIZES.S, FONTS[fontKey(state.font)].css, 'center', false) + 4;
       parts.push({ b, h, c });
     }
+    else if (b.type === 'barcode') { const c = barcodeCanvas(b, W); if (c) parts.push({ b, h: c.height, c }); }
     else if (b.type === 'sep') parts.push({ b, h: drawSep(meas, b.style, W, 0, false) });
     else if (b.type === 'space') parts.push({ b, h: Math.max(4, +b.h || 40) });
   }
@@ -458,8 +477,9 @@ async function composeStrip(W) {
     else if (b.type === 'image') ctx.drawImage(p.c, Math.round((W - p.c.width) / 2), 0);
     else if (b.type === 'qr') {
       ctx.drawImage(p.c, Math.round((W - p.c.width) / 2), 0);
-      if (b.caption) layoutRich(ctx, parseInline(fillVars(b.caption)), 0, W, p.c.height + 4, SIZES.S, FONTS[state.font].css, 'center', true);
+      if (b.caption) layoutRich(ctx, parseInline(fillVars(b.caption)), 0, W, p.c.height + 4, SIZES.S, FONTS[fontKey(state.font)].css, 'center', true);
     }
+    else if (b.type === 'barcode') ctx.drawImage(p.c, Math.round((W - p.c.width) / 2), 0);
     else if (b.type === 'sep') drawSep(ctx, b.style, W, 0, true);
     ctx.restore();
     y += p.h + gapOf(p);

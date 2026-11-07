@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070433';
+const APP_VERSION = '202611071312';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -10,7 +10,7 @@ const imageCache = new Map();
 let device = null, writeChar = null, printing = false;
 const $ = id => document.getElementById(id);
 
-const FONT_CHIPS = { sans: 'Sans', serif: 'Serif', mono: 'Ticket', machine: 'Machine', hand: 'Manuscrite', marker: 'Marqueur' };
+const FONT_CHIPS = Object.fromEntries(Object.entries(FONTS).filter(([, f]) => !f.hidden).map(([k, f]) => [k, f.label]));
 
 // ---------- Journal, toast ----------
 function log(m) {
@@ -75,6 +75,7 @@ function newBlock(type, props) {
     list:  { title: '', items: '', size: 'M', box: 'square' },
     image: { src: '', render: 'photo', bright: 0, width: 100 },
     qr:    { text: '', size: 'M', caption: '' },
+    barcode: { text: '', size: 'M', showText: true },
     sep:   { style: 'stars' },
     space: { h: 60 },
   }[type];
@@ -251,6 +252,15 @@ function card(b) {
       h('input', { class: 'field', value: b.text, placeholder: 'Un lien, un texte, un mot de passe Wi-Fi…', oninput: e => { set('text', e.target.value); draw(); } })));
     more.append(seg(b.size, SIZE_OPTS, v => set('size', v)),
       h('input', { class: 'field', value: b.caption, placeholder: 'Légende sous le QR (facultatif)', oninput: e => set('caption', e.target.value) }));
+  }
+
+  else if (b.type === 'barcode') {
+    const pv = h('div', { class: 'bcview' });
+    const draw = () => { const c = barcodeCanvas(b, contentGeometry().W); pv.innerHTML = ''; if (c) pv.append(c); else pv.append(h('span', { style: 'color:var(--mute);font-size:14px' }, b.text ? 'Texte trop long pour la largeur' : 'Le code-barres apparaîtra ici')); };
+    draw();
+    c.append(h('input', { class: 'field', value: b.text, placeholder: 'Numéro, référence, code…', style: 'font-size:17px;background:transparent;padding:6px 0;width:100%', oninput: e => { set('text', e.target.value); draw(); } }), pv);
+    const tg = h('button', { class: 'toggle' + (b.showText ? ' on' : ''), onclick: e => { e.stopPropagation(); tg.classList.toggle('on'); set('showText', tg.classList.contains('on')); draw(); } }, h('i'), 'Texte sous les barres');
+    more.append(seg(b.size, [['S', 'Bas'], ['M', 'Moyen'], ['L', 'Haut']], v => { set('size', v); draw(); }), tg);
   }
 
   else if (b.type === 'sep') {
@@ -628,8 +638,9 @@ function addText(txt) {
   } else { addBlock('text', { text: txt }); toast('Texte ajouté'); }
 }
 async function importFiles(files, target) {
-  if (isLabelTpl() && files.some(f => kindOf(f) === 'image' || kindOf(f) === 'pdf')) {
-    state.label.tpl = 'free'; syncTop(); toast('Passage en étiquette libre pour placer l\'image');
+  if (isLabelTpl() && !target) {
+    const pic = files.find(f => kindOf(f) === 'image' || kindOf(f) === 'pdf');
+    if (pic) { await setLabelPhoto(pic); files = files.filter(f => f !== pic); if (!files.length) return; }
   }
   for (const f of files) {
     const k = kindOf(f);
@@ -873,7 +884,8 @@ function applyTpl(k) {
   const L = state.label;
   if (k === 'free') { L.tpl = 'free'; syncTop(); changed(); renderBlocks(); return; }
   const t = LABEL_TPLS[k];
-  Object.assign(L, { tpl: k, orient: t.orient, frame: t.frame, upper: t.upper, align: t.align, icon: t.icon, qrOn: t.qrOn });
+  Object.assign(L, { tpl: k, orient: t.orient, frame: t.frame, upper: t.upper, align: t.align, icon: t.icon, qrOn: t.qrOn,
+    photoPos: t.photoPos || (L.photo ? L.photoPos : '') });
   L.touched = L.touched || {};
   ['title', 'subtitle', 'detail', 'qr'].forEach(f => { if (!L.touched[f]) L[f] = t.ex[f] || ''; });
   syncTop(); changed();
@@ -891,7 +903,9 @@ function updateTip(fit) {
   const L = state.label, T = labelTexts(L);
   const mm = fit ? Math.round(fit.s * 0.72 / 8) : 0; // hauteur approximative des majuscules
   let icon = '💡', text;
-  if (!T.title) text = 'Commence par un <b>titre</b> : c\'est lui qui prendra toute la place.';
+  if (L.photoPos === 'full') { icon = '📷'; text = L.photo ? 'Photo sur toute l\'étiquette' + (T.title ? ', titre dans un bandeau en bas.' : '. Ajoute un titre pour un bandeau en bas.') : 'Ajoute une photo : elle occupera toute l\'étiquette.'; }
+  else if (L.photoPos && !L.photo) { icon = '📷'; text = 'Ajoute une photo : la zone en pointillés montre où elle ira, le texte se cale à côté.'; }
+  else if (!T.title) text = 'Commence par un <b>titre</b> : c\'est lui qui prendra toute la place.';
   else if (mm >= 9) { icon = '👌'; text = `Titre ajusté et centré automatiquement : <b>${mm} mm</b> de haut, lisible de loin.`; }
   else if (mm >= 5) { icon = '👍'; text = `Titre à <b>${mm} mm</b>. ${L.orient === 'port' ? 'En étiquette <b>couchée</b>, il pourrait être plus grand.' : 'Raccourcis-le ou retire le sous-titre pour le grossir.'}`; }
   else { icon = '⚠️'; text = `Titre très petit (<b>${mm || 1} mm</b>). Raccourcis le texte${L.qrOn ? ' ou retire le QR' : ''}.`; }
@@ -982,6 +996,30 @@ function renderLabelEditor() {
     h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'QR code'),
       toggle(L.qrOn, L.qrOn ? 'Activé' : 'Ajouter', v => { set('qrOn', v); qrInput.style.display = v ? '' : 'none'; if (v) qrInput.focus(); })),
     qrInput));
+  // Photo sur l'étiquette
+  const hasPhoto = !!L.photo;
+  const pickPhoto = () => {
+    let inp = $('fileLabelPhoto');
+    if (!inp) { inp = h('input', { type: 'file', id: 'fileLabelPhoto', accept: 'image/*,application/pdf,.pdf', hidden: '' }); document.body.append(inp);
+      inp.addEventListener('change', e => { const f = e.target.files[0]; if (f) setLabelPhoto(f); }); }
+    inp.value = ''; inp.click();
+  };
+  const photoCard = h('div', { class: 'lcard' },
+    h('div', { class: 'lrow', style: 'padding-top:0' }, h('span', { class: 'lab' }, 'Photo'),
+      h('button', { class: 'magic', onclick: pickPhoto }, hasPhoto ? 'Changer la photo' : '📷 Ajouter une photo'),
+      hasPhoto ? h('button', { class: 'mini-chip', onclick: () => { L.photo = ''; if (L.tpl !== 'photo') L.photoPos = ''; renderLabelEditor(); changed(); } }, 'Retirer') : null));
+  if (hasPhoto || L.photoPos) {
+    photoCard.append(
+      h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Place'),
+        seg(L.photoPos || 'left', [['left', '◧ À gauche'], ['top', '⬒ Au-dessus'], ['full', '■ Toute l\'étiquette']], v => { set('photoPos', v); })),
+      h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Cadrage'),
+        seg(L.photoFit || 'contain', [['contain', 'Photo entière'], ['cover', 'Remplir la zone']], v => set('photoFit', v)),
+        seg(L.photoRender || 'photo', [['photo', 'Photo'], ['net', 'Dessin net']], v => set('photoRender', v))),
+      h('div', { class: 'lrow' }, h('span', { class: 'lab' }, 'Lumière'),
+        h('label', { class: 'slider' }, '☾', h('input', { type: 'range', min: -60, max: 60, value: L.photoBright || 0, oninput: e => set('photoBright', +e.target.value) }), '☀︎')));
+  }
+  box.append(photoCard);
+
   tipBox = h('div', { class: 'tip' });
   box.append(tipBox);
 }
@@ -1088,6 +1126,46 @@ function renderPrepBanner() {
   }
 }
 
+// ---------- Coller depuis le presse-papiers ----------
+async function pasteFromClipboard() {
+  try {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      const items = await navigator.clipboard.read();
+      const files = [];
+      let text = '';
+      for (const it of items) {
+        const img = it.types.find(t => t.startsWith('image/')), pdf = it.types.includes('application/pdf');
+        if (img || pdf) { const blob = await it.getType(img || 'application/pdf'); files.push(new File([blob], pdf ? 'colle.pdf' : 'colle.' + (img.split('/')[1] || 'png'), { type: blob.type })); }
+        else if (it.types.includes('text/plain')) text += await (await it.getType('text/plain')).text();
+      }
+      if (files.length) { importFiles(files); return; }
+      if (text.trim()) { addText(text); return; }
+      toast('Le presse-papiers est vide', true); return;
+    }
+    const t = await navigator.clipboard.readText();
+    if (t && t.trim()) addText(t); else toast('Le presse-papiers est vide', true);
+  } catch (_) {
+    toast('Bluefy n\'autorise pas la lecture directe : appui long sur la zone en pointillés, puis « Coller »', true);
+    $('drop').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+// Photo d'étiquette : image ou 1re page de PDF, réduite pour le stockage
+async function setLabelPhoto(f) {
+  try {
+    const k = kindOf(f);
+    let src = null;
+    if (k === 'image') src = await shrinkDataUrl(await readAs(f, 'dataurl'), 900);
+    else if (k === 'pdf') { const imgs = await pdfToImages(f); src = imgs[0] || null; }
+    if (!src) throw new Error('format non lu');
+    const L = state.label;
+    L.photo = src;
+    if (!L.photoPos) L.photoPos = L.orient === 'land' ? 'left' : 'top';
+    renderLabelEditor(); changed();
+    toast('Photo placée sur l\'étiquette 📷');
+  } catch (e) { toast('Impossible d\'utiliser ce fichier : ' + (e.message || e), true); }
+}
+
 // ---------- Dessin ----------
 async function newDrawing() {
   const g = contentGeometry();
@@ -1117,8 +1195,9 @@ function syncTop() {
   const lf = labelFmt(); const ms = document.querySelector('.mode[data-mode=dymo] small'); if (ms) ms.textContent = `${lf.w} × ${lf.h} mm`;
   const f = $('fonts'); f.innerHTML = '';
   Object.entries(FONT_CHIPS).forEach(([k, label]) => {
-    f.append(h('button', { class: 'chip' + (state.font === k ? ' active' : ''), onclick: () => { state.font = k; syncTop(); changed(); refreshThumbs(); document.fonts.load(`bold 40px ${FONTS[k].css}`).then(() => { if (state.mode === 'dymo') renderLabelEditor(); changed(); }); } },
-      h('span', { class: 'aa', style: `font-family:${FONTS[k].css}` }, 'Aa'), h('small', {}, label)));
+    f.append(h('button', { class: 'chip' + (fontKey(state.font) === k ? ' active' : ''), onclick: () => { state.font = k; syncTop(); changed(); refreshThumbs(); document.fonts.load(`bold 40px ${FONTS[k].css}`).then(() => { if (state.mode === 'dymo') renderLabelEditor(); changed(); }); } },
+      h('span', { class: 'aa', style: `font-family:${FONTS[k].css};font-weight:${FONTS[k].bold || 700}` }, 'Aa'),
+      h('span', { class: 'fname', style: `font-family:${FONTS[k].css}` }, label)));
   });
   $('labelEditor').style.display = state.mode === 'dymo' ? '' : 'none';
   renderPrepBanner();
@@ -1144,7 +1223,8 @@ document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
   const t = b.dataset.add;
   if (t === 'file') { $('filePick').value = ''; $('filePick').click(); }
   else if (t === 'draw') newDrawing();
-  else addBlock(t, {}, t === 'text' || t === 'list' || t === 'qr');
+  else if (t === 'paste') pasteFromClipboard();
+  else addBlock(t, {}, t === 'text' || t === 'list' || t === 'qr' || t === 'barcode');
 });
 
 // Feuille de réglages
@@ -1224,6 +1304,9 @@ window.addEventListener('scroll', () => document.querySelector('header').classLi
 
 // ---------- Démarrage ----------
 if (!load()) state.blocks = starter();
+state.font = fontKey(state.font);
+// toutes les polices chargées d'avance : pastilles fidèles et aperçu juste
+Promise.all(Object.values(FONTS).flatMap(f => [document.fonts.load(`400 20px "${f.web}"`), document.fonts.load(`${f.bold || 700} 20px "${f.web}"`)])).then(() => { syncTop(); changed(); }).catch(() => {});
 // anciens réglages : les formats courants passent de 3 à 5 mm d'espace
 if (state.labelFmt && +state.labelFmt.w === 54 && +state.labelFmt.h === 70 && +state.labelFmt.gap < 6.5) state.labelFmt.gap = 6.5;
 delete state.dymoGap;

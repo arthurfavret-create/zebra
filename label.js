@@ -13,6 +13,8 @@ const LABEL_TPLS = {
                ex: { title: 'Léa', subtitle: '', detail: '' } },
   rangement: { name: 'Rangement', orient: 'port', frame: 'corners', upper: true,  align: 'center', icon: '★', qrOn: false,
                ex: { title: 'Câbles', subtitle: 'USB-C · HDMI', detail: '' } },
+  photo:     { name: 'Photo',     orient: 'land', frame: 'round',   upper: false, align: 'center', icon: '',  qrOn: false, photoPos: 'left',
+               ex: { title: 'Souvenir', subtitle: 'Été 2026', detail: '' } },
   qr:        { name: 'QR code',   orient: 'port', frame: 'simple',  upper: false, align: 'center', icon: '',  qrOn: true,
                ex: { title: 'Wi-Fi', subtitle: 'Scanne-moi', detail: '', qr: 'WIFI:T:WPA;S:MaBox;P:motdepasse;;' } },
 };
@@ -20,7 +22,8 @@ const LABEL_TPLS = {
 function defaultLabel() {
   const t = LABEL_TPLS.bocal;
   return { tpl: 'bocal', orient: t.orient, frame: t.frame, upper: t.upper, align: t.align, icon: t.icon, qrOn: t.qrOn, flip: false,
-           title: t.ex.title, subtitle: t.ex.subtitle, detail: t.ex.detail, qr: '' };
+           title: t.ex.title, subtitle: t.ex.subtitle, detail: t.ex.detail, qr: '',
+           photo: '', photoPos: '', photoFit: 'contain', photoRender: 'photo', photoBright: 0 };
 }
 
 // Dessin utilisé comme icône : rogné sur ses traits, chargé une fois
@@ -33,6 +36,36 @@ function labelDrawImage(L) {
   im.onload = () => { if (labelDrawCache.src === L.drawing) { labelDrawCache.img = trimWhite(im); if (typeof changed === 'function') changed(); if (typeof renderLabelEditor === 'function' && state.mode === 'dymo') renderLabelEditor(); } };
   im.src = L.drawing;
   return null;
+}
+
+// Photo de l'étiquette : chargée une fois, puis recadrée et tramée à la taille de sa zone
+const labelPhotoCache = { src: null, img: null };
+function labelPhotoImage(L) {
+  if (!L.photo) return null;
+  if (labelPhotoCache.src === L.photo) return labelPhotoCache.img;
+  labelPhotoCache.src = L.photo; labelPhotoCache.img = null;
+  const im = new Image();
+  im.onload = () => { if (labelPhotoCache.src === L.photo) { labelPhotoCache.img = im; if (typeof changed === 'function') changed(); } };
+  im.src = L.photo;
+  return null;
+}
+function photoBox(img, bw, bh, L) {
+  bw = Math.max(1, Math.round(bw)); bh = Math.max(1, Math.round(bh));
+  const c = document.createElement('canvas'); c.width = bw; c.height = bh;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, bw, bh);
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const k = L.photoFit === 'cover' ? Math.max(bw / iw, bh / ih) : Math.min(bw / iw, bh / ih);
+  const dw = iw * k, dh = ih * k;
+  x.drawImage(img, (bw - dw) / 2, (bh - dh) / 2, dw, dh);
+  return ditherInto(c, bw, { render: L.photoRender || 'photo', bright: L.photoBright || 0 });
+}
+function photoPlaceholder(ctx, x, y, w, h) {
+  toneFill(ctx, x, y, w, h, 0.12);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); ctx.setLineDash([]);
+  // petite montagne + soleil
+  const cx = x + w / 2, cy = y + h / 2, s = Math.min(w, h) * 0.22;
+  ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(cx - s * 1.4, cy + s * 0.7); ctx.lineTo(cx - s * 0.3, cy - s * 0.5); ctx.lineTo(cx + s * 0.3, cy + s * 0.1); ctx.lineTo(cx + s * 0.7, cy - s * 0.2); ctx.lineTo(cx + s * 1.4, cy + s * 0.7); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.8, cy - s * 0.8, s * 0.28, 0, Math.PI * 2); ctx.fill();
 }
 
 // ---------- Cadres ----------
@@ -108,7 +141,7 @@ function composeLabel(L, opts) {
   const view = document.createElement('canvas'); view.width = W; view.height = H;
   const ctx = view.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
-  const family = FONTS[state.font].css;
+  const family = FONTS[fontKey(state.font)].css;
   const T = labelTexts(L);
   drawFrame(ctx, L.frame, W, H);
 
@@ -130,6 +163,35 @@ function composeLabel(L, opts) {
     else { qr.x = ax + (aw - size) / 2; qr.y = ay + ah - size; ah -= size + 12; }
   }
 
+  // Photo : à gauche, au-dessus, ou sur toute l'étiquette (avec le titre en bandeau)
+  let photo = null;
+  const hasText = !!(T.title || T.subtitle || T.detail || L.icon);
+  if (L.photoPos) {
+    const img = labelPhotoImage(L);
+    const pos = L.photoPos;
+    let bx = ax, by = ay, bw = aw, bh = ah;
+    if (pos === 'left' && hasText) { bw = Math.round(aw * 0.5); ax += bw + 14; aw -= bw + 14; }
+    else if (pos === 'top' && hasText) { bh = Math.round(ah * 0.58); ay += bh + 12; ah -= bh + 12; }
+    photo = { img, bx, by, bw, bh, full: pos === 'full' };
+  }
+  if (photo) {
+    if (photo.img) ctx.drawImage(photoBox(photo.img, photo.bw, photo.bh, L), Math.round(photo.bx), Math.round(photo.by));
+    else if (!opts.noPlaceholder) photoPlaceholder(ctx, photo.bx, photo.by, photo.bw, photo.bh);
+  }
+  if (photo && photo.full) {
+    // pleine étiquette : le titre seul, dans un bandeau blanc en bas
+    if (T.title) {
+      const bandH = Math.round(Math.min(H, W) * 0.26), pad2 = 10;
+      const sub = Object.assign({}, L, { icon: '' });
+      const ft = fitStack(ctx, { title: T.title, subtitle: '', detail: '' }, sub, aw - pad2 * 2, bandH - pad2 * 2, family);
+      const yb = ay + ah - bandH;
+      ctx.fillStyle = '#fff'; ctx.fillRect(ax, yb, aw, bandH);
+      ctx.fillStyle = '#000'; ctx.fillRect(ax, yb, aw, 3);
+      layoutRich(ctx, parseInline(T.title), ax + pad2, aw - pad2 * 2, yb + (bandH - ft.st.total) / 2, ft.s, family, 'center', true, true);
+    }
+    toneThreshold(view);
+    return finishLabel(view, L, d, opts, { s: 0, st: { total: 0 } });
+  }
   const fit = fitStack(ctx, T, L, aw, ah, family);
   const st = fit.st;
   let y = Math.round(ay + (ah - st.total) / 2);
@@ -159,8 +221,11 @@ function composeLabel(L, opts) {
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
       if (qr.q.isDark(r, c)) ctx.fillRect(Math.round(qr.x) + (c + 2) * qr.mod, Math.round(qr.y) + (r + 2) * qr.mod, qr.mod, qr.mod);
   }
-  threshold(view);
-
+  toneThreshold(view);
+  return finishLabel(view, L, d, opts, fit);
+}
+function finishLabel(view, L, d, opts, fit) {
+  const land = L.orient === 'land';
   if (opts.viewOnly) return { view, fit };
   // Page d'impression : 384 × 807, pivotée si l'étiquette est couchée
   const print = document.createElement('canvas'); print.width = PW; print.height = d.hD;

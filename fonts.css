@@ -1,0 +1,12 @@
+/* Polices intégrées (Fontsource, licences OFL / dans fonts/LICENSE-*) */
+@font-face { font-family:'ZS Inter'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/inter-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Inter'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/inter-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Bricolage'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/bricolage-grotesque-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Bricolage'; font-style:normal; font-weight:800; font-display:swap; src:url(fonts/bricolage-grotesque-latin-800-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Playfair'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/playfair-display-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Playfair'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/playfair-display-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Space Mono'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/space-mono-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Space Mono'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/space-mono-latin-700-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Special Elite'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/special-elite-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Caveat'; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/caveat-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family:'ZS Caveat'; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/caveat-latin-700-normal.woff2) format('woff2'); }
