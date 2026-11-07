@@ -213,7 +213,11 @@
   .bar-in { max-width:1180px; margin:0 auto; display:flex; gap:12px; align-items:center; justify-content:flex-end; }
   .copies { display:flex; align-items:center; background:var(--card); box-shadow:var(--shadow); border-radius:18px; height:58px; padding:0 6px; }
   .copies button { border:0; background:transparent; width:40px; height:44px; font-size:22px; font-weight:700; border-radius:12px; }
-  .copies span { min-width:52px; text-align:center; font-weight:700; font-size:15px; }
+  .copies .cnum { display:flex; flex-direction:column; align-items:center; min-width:70px; line-height:1; }
+  .copies input { width:56px; border:0; background:transparent; text-align:center; font-family:var(--display); font-weight:800; font-size:22px; padding:0; outline:0; -moz-appearance:textfield; }
+  .copies input::-webkit-inner-spin-button, .copies input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .copies small { font-size:11px; color:var(--mute); margin-top:3px; }
+  .copies.multi { box-shadow:0 0 0 2px var(--pink), var(--shadow); }
   .print { position:relative; overflow:hidden; border:0; height:58px; padding:0 30px; border-radius:18px; color:#fff; font-family:var(--display); font-weight:800; font-size:20px;
     background:linear-gradient(120deg, var(--pink), var(--orange)); box-shadow:0 8px 24px rgba(255,79,139,.35); min-width:200px; transition:transform .12s; }
   .print:active { transform:scale(.97); }
@@ -292,7 +296,9 @@
 </main>
 
 <div class="bar"><div class="bar-in">
-  <div class="copies"><button id="cMinus" aria-label="Moins">−</button><span id="cVal">×1</span><button id="cPlus" aria-label="Plus">+</button></div>
+  <div class="copies"><button id="cMinus" aria-label="Moins">−</button>
+    <label class="cnum"><input id="cVal" type="number" inputmode="numeric" min="1" max="50" value="1" aria-label="Nombre d'exemplaires"><small id="cLab">exemplaire</small></label>
+    <button id="cPlus" aria-label="Plus">+</button></div>
   <button class="print" id="btnPrint"><div class="fill" id="fill"></div><span id="printLabel">Imprimer</span></button>
 </div></div>
 

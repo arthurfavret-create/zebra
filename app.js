@@ -79,7 +79,9 @@ async function renderPreview() {
     : state.mode === 'dymo'
     ? `${pages.length} étiquette${pages.length > 1 ? 's' : ''}`
     : `Ticket de ${(pages[0].height / 80).toFixed(1).replace('.', ',')} cm` + (state.blocks.some(b => b.type === 'list') && pages[0].height <= TPE_LIST_MIN ? ' (minimum liste)' : '');
-  if (state.copies > 1) info += ` · ${state.copies} exemplaires`;
+  if (state.copies > 1) info += state.mode === 'dymo'
+    ? ` · ×${state.copies} = ${pages.length * state.copies} étiquettes`
+    : ` · ×${state.copies} = ${(pages[0].height * state.copies / 80 / 100).toFixed(2).replace('.', ',')} m de papier`;
   const warn = px && black / px > 0.3;
   if (warn) info += ' · beaucoup de noir, pense à éclaircir';
   $('info').textContent = info; $('info').className = 'info' + (warn ? ' warn' : '');
@@ -577,7 +579,7 @@ $('btnPrint').onclick = async () => {
     label.textContent = 'Préparation…';
     const zpl = buildZpl(await compose());
     label.textContent = 'Connexion…';
-    if (!(await ensureConnected())) { label.textContent = 'Imprimer'; return; }
+    if (!(await ensureConnected())) { syncTop(); return; }
     paper.classList.add('printing');
     const prog = p => { fill.style.width = Math.round(p * 100) + '%'; label.textContent = `Envoi ${Math.round(p * 100)} % · toucher pour annuler`; };
     try { await send(zpl, prog); }
@@ -592,9 +594,9 @@ $('btnPrint').onclick = async () => {
     }
     label.textContent = 'Imprimé ✓'; confetti();
     if (state.mode === 'dymo') toast('Pense à bien caler l\'étiquette sous la tête 🏷️');
-    setTimeout(() => { label.textContent = 'Imprimer'; fill.style.width = '0'; }, 2200);
+    setTimeout(() => { fill.style.width = '0'; syncTop(); }, 2200);
   } catch (e) {
-    label.textContent = 'Imprimer'; fill.style.width = '0';
+    fill.style.width = '0'; setTimeout(syncTop, 0);
     if (cancelSend) toast('Impression annulée');
     else { toast('Échec d\'envoi : ' + (e.message || e) + '. Éteins et rallume la Zebra, puis reconnecte-la.', true); writeChar = null; setConn('Reconnecter', 'err'); }
   } finally { printing = false; cancelSend = false; paper.classList.remove('printing'); }
@@ -757,12 +759,19 @@ function syncTop() {
   if (state.mode === 'dymo' && !isLabelTpl()) {
     f.append(h('button', { class: 'toggle' + (state.frame ? ' on' : ''), onclick: () => { state.frame = !state.frame; syncTop(); changed(); refreshThumbs(); } }, h('i'), 'Cadre'));
   }
-  $('cVal').textContent = '×' + state.copies;
+  if (document.activeElement !== $('cVal')) $('cVal').value = state.copies;
+  $('cLab').textContent = state.copies > 1 ? 'exemplaires' : 'exemplaire';
+  document.querySelector('.copies').classList.toggle('multi', state.copies > 1);
+  $('printLabel').textContent = printing ? $('printLabel').textContent : (state.copies > 1 ? `Imprimer ×${state.copies}` : 'Imprimer');
 }
 function refreshThumbs() { renderBlocks(); } // la largeur utile change selon le mode / le cadre
 document.querySelectorAll('.mode').forEach(m => m.onclick = () => { state.mode = m.dataset.mode; syncTop(); changed(); refreshThumbs(); });
-$('cMinus').onclick = () => { state.copies = Math.max(1, state.copies - 1); syncTop(); changed(); };
-$('cPlus').onclick = () => { state.copies = Math.min(20, state.copies + 1); syncTop(); changed(); };
+const setCopies = n => { state.copies = Math.max(1, Math.min(MAX_COPIES, Math.round(+n) || 1)); syncTop(); changed(); };
+$('cMinus').onclick = () => setCopies(state.copies - 1);
+$('cPlus').onclick = () => setCopies(state.copies + 1);
+$('cVal').addEventListener('input', e => { if (e.target.value !== '') setCopies(e.target.value); });
+$('cVal').addEventListener('blur', e => { e.target.value = state.copies; });
+$('cVal').addEventListener('focus', e => setTimeout(() => e.target.select(), 0));
 document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
   const t = b.dataset.add;
   if (t === 'file') { $('filePick').value = ''; $('filePick').click(); }

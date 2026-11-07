@@ -10,6 +10,7 @@ const DYMO_LL = 848;            // pas 106 mm (étiquette + espace)
 const DYMO_LH = 41;             // décalage de l'espace de 5 mm
 const DYMO_INSET = 10;          // zone utile x 10..374, y 10..797
 const BLOCK_GAP = 14;
+const MAX_COPIES = 50;
 const TPE_LIST_MIN = 1200;      // 15 cm minimum dès qu'il y a une liste (8 points/mm)
 
 const ZEBRA_SERVICE = '38eb4a80-c570-11e3-9507-0002a5d5c51b';
@@ -427,8 +428,10 @@ function buildZpl(pages) {
       parts.push(`^XA\n^MNN\n^PW${PW}\n^LL${z - a}\n^LH0,0\n^FO0,0${g.zpl}^FS\n^XZ`);
     });
   }
+  const copies = Math.max(1, Math.min(MAX_COPIES, +state.copies || 1));
+  // un seul format : l'image part une fois et l'imprimante la répète (^PQ), bien plus rapide en Bluetooth
+  if (parts.length === 1) return parts[0].replace(/(\^PQ1\n)?\^XZ$/, `^PQ${copies}\n^XZ`) + '\n';
   const one = parts.join('\n');
-  const copies = Math.max(1, Math.min(20, +state.copies || 1));
   return Array(copies).fill(one).join('\n') + '\n';
 }
 
