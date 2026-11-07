@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611070320';
+const APP_VERSION = '202611070322';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -783,7 +783,10 @@ syncPrinter();
 $('btnPrint').onclick = async () => {
   if (printing) { cancelSend = true; $('printLabel').textContent = 'Annulation…'; return; }
   cancelSend = false;
-  if (!state.blocks.length) { toast('Rien à imprimer pour l\'instant', true); return; }
+  // en étiquette à modèle, le contenu est dans le formulaire de l'étiquette, pas dans les blocs
+  const L = state.label, T = isLabelTpl() ? labelTexts(L) : null;
+  const empty = T ? !(T.title || T.subtitle || T.detail || L.icon || (L.qrOn && (L.qr || '').trim())) : !state.blocks.length;
+  if (empty) { toast(T ? 'Écris au moins un titre sur l\'étiquette' : 'Rien à imprimer pour l\'instant', true); return; }
   printing = true;
   const label = $('printLabel'), fill = $('fill'), paper = $('paper');
   try {
