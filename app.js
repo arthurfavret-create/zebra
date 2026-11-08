@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611080106';
+const APP_VERSION = '202611080208';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -176,7 +176,16 @@ function card(b) {
       ta.value = v.slice(0, ls) + next + v.slice(ls + line.length);
       ta.focus(); autosize(ta); set('text', ta.value);
     };
+    const magic = h('button', { class: 'magic', onclick: e => {
+      e.stopPropagation();
+      const before = ta.value; if (!before.trim()) { toast('Écris ou colle d\'abord un texte', true); return; }
+      const after = autoFormat(before);
+      if (after === before) { toast('Rien à changer : le texte est déjà mis en forme'); return; }
+      ta.value = after; autosize(ta); set('text', after);
+      toast('Mise en page appliquée ✨', false, { label: 'Annuler', run: () => { ta.value = before; autosize(ta); set('text', before); } });
+    } }, '✨ Mettre en forme');
     more.append(
+      magic,
       h('div', { class: 'fmt' },
         h('button', { title: 'Gras', onclick: e => { e.stopPropagation(); wrap('**', '**'); } }, 'B'),
         h('button', { title: 'Italique', style: 'font-style:italic', onclick: e => { e.stopPropagation(); wrap('*', '*'); } }, 'I'),
@@ -418,6 +427,91 @@ function looksLikeList(text) {
   if (lines.length < 2) return false;
   const marked = lines.filter(l => /^\s*([-*+•]|\d+[.)]|\[[ xX]?\]|☐|☑|✓)/.test(l)).length;
   return marked >= Math.max(2, lines.length * 0.5);
+}
+
+// ---------- Texte : mise en page automatique (comme pour les PDF, mais sur du texte brut) ----------
+// Titre, intertitres, puces, numéros, cases, « Important… » en encadré, « Clé : valeur » en gras, séparateurs,
+// lignes coupées recollées en paragraphes. Les lignes déjà en Markdown sont gardées telles quelles.
+function hasMarkdown(t) { return /^(#{1,4} |> |[-*+] |\d+[.)] |---\s*$)/m.test(t) || /\*\*[^*]+\*\*|==[^=]+==/.test(t); }
+function autoFormat(text) {
+  const BOX = /^(important|attention|à retenir|a retenir|note|nb|n\.b\.|astuce|conseil|remarque|avertissement|rappel|⚠️?|❗|💡)\b/i;
+  const BULLET = /^\s*([•●▪◦‣·∙*+\-–—►▶→✔✓➤]|[a-z]\))\s+/i;
+  const NUM = /^\s*(\d{1,2})\s*[.)°/-]\s+(?=\S)/;
+  const CHECK = /^\s*(?:[-*•]\s*)?(\[ ?\]|☐|□|○)\s*/;
+  const DONE = /^\s*(?:[-*•]\s*)?(\[[xX]\]|☑|☒|✅)\s*/;
+  const SEP = /^\s*([-*_=~•·]\s*){3,}$/;
+  const endsSentence = t => /[.!?…:;»"”)]$/.test(t);
+  const isMd = t => /^(#{1,4} |> |[-*+] |\d+[.)] )/.test(t);
+  const raw = text.replace(/\r/g, '').replace(/\t/g, ' ').replace(/ /g, ' ').split('\n').map(l => l.replace(/\s+$/, ''));
+  // 1. blocs séparés par des lignes vides
+  const groups = []; let g = [];
+  raw.forEach(l => { if (!l.trim()) { if (g.length) groups.push(g), g = []; } else g.push(l.trim()); });
+  if (g.length) groups.push(g);
+  if (!groups.length) return text;
+  const lens = raw.filter(l => l.trim()).map(l => l.trim().length).sort((a, b) => a - b);
+  const longLine = lens[Math.floor(lens.length * 0.8)] || 60; // longueur d'une ligne « pleine »
+  const out = [];
+  const isHeading = (t, alone, next) => t.length <= 60 && !endsSentence(t) && !BULLET.test(t) && !NUM.test(t) && !/^https?:/i.test(t)
+    && (alone || (t === t.toLocaleUpperCase('fr') && /\p{L}{3}/u.test(t))) && !!next;
+  groups.forEach((lines, gi) => {
+    const next = groups[gi + 1];
+    // bloc d'une seule ligne courte suivi d'autre chose → titre / intertitre
+    if (lines.length === 1 && !isMd(lines[0]) && isHeading(lines[0], true, next)) {
+      const t = lines[0].replace(/:$/, '');
+      const caps = t === t.toLocaleUpperCase('fr') && /\p{L}{3}/u.test(t);
+      const lvl = !out.length && gi === 0 ? 1 : caps ? 2 : 3;
+      const txt = caps && lvl > 1 ? t.charAt(0) + t.slice(1).toLocaleLowerCase('fr') : t;
+      out.push('#'.repeat(lvl) + ' ' + txt); return;
+    }
+    let para = '';
+    const flush = () => { if (para) { out.push(BOX.test(para) ? para.split('\n').map(x => '> ' + x).join('\n') : para); para = ''; } };
+    const isItem = x => !!x && (BULLET.test(x) || NUM.test(x) || CHECK.test(x) || DONE.test(x) || /^[-*+] /.test(x));
+    const capsLine = x => x === x.toLocaleUpperCase('fr') && /\p{L}{3}/u.test(x);
+    lines.forEach((t, i) => {
+      const nextLine = lines[i + 1];
+      if (isMd(t) || /^#{1,4} /.test(t)) { flush(); out.push(t); return; }
+      if (SEP.test(t)) { flush(); out.push('---'); return; }
+      if (DONE.test(t)) { flush(); out.push('- [x] ' + t.replace(DONE, '')); return; }
+      if (CHECK.test(t)) { flush(); out.push('- [ ] ' + t.replace(CHECK, '')); return; }
+      if (NUM.test(t)) { flush(); const m = t.match(NUM); out.push(`${m[1]}. ` + t.replace(NUM, '')); return; }
+      if (BULLET.test(t)) { flush(); out.push('- ' + t.replace(BULLET, '')); return; }
+      // toute première ligne, courte et sans ponctuation, suivie d'autre chose → titre principal
+      if (gi === 0 && i === 0 && !out.length && t.length <= 60 && !endsSentence(t) && (nextLine || next)) {
+        out.push('# ' + (capsLine(t) ? t.charAt(0) + t.slice(1).toLocaleLowerCase('fr') : t)); return;
+      }
+      // intertitre : ligne courte en capitales, ou finissant par « : », ou annonçant une liste
+      if (t.length <= 50 && nextLine && !BOX.test(t) && ((i === 0 && (/:$/.test(t) || capsLine(t))) || (isItem(nextLine) && (/:$/.test(t) || !endsSentence(t))))) {
+        flush(); const h = t.replace(/\s*:$/, '');
+        out.push('### ' + (capsLine(h) ? h.charAt(0) + h.slice(1).toLocaleLowerCase('fr') : h)); return;
+      }
+      // « Temps : 20 min » → clé en gras ; « Astuce : … » → encadré
+      const kv = t.match(/^([\p{L}][\p{L}\d '’()/-]{1,24}?)\s?:\s+(\S.*)$/u);
+      if (kv && !/https?$/i.test(kv[1])) {
+        flush();
+        if (BOX.test(kv[1])) out.push(`> **${kv[1].trim()} :** ${kv[2]}`);
+        else if (t.length < 80) out.push(`**${kv[1].trim()} :** ${kv[2]}`);
+        else para = t;
+        return;
+      }
+      // suite d'une puce coupée en deux lignes
+      const prevLine = lines[i - 1], prevOut = out[out.length - 1] || '';
+      const continues = prevLine && !endsSentence(prevLine) && /^[a-zà-ÿ(]/.test(t);
+      if (!para && continues && /^([-*] |\d+\. )/.test(prevOut)) { out[out.length - 1] += ' ' + t; return; }
+      if (para) {
+        if (BOX.test(t)) { flush(); para = t; }
+        else if (/[-‐]$/.test(para) && /^[a-zà-ÿ]/.test(t)) para = para.replace(/[-‐]$/, '') + t;   // mot coupé
+        else para += (continues ? ' ' : '\n') + t;                                                  // sinon, on garde le retour à la ligne
+      } else para = t;
+    });
+    flush();
+  });
+  // une ligne vide entre les blocs, sauf entre puces / cases / numéros qui se suivent
+  let res = '';
+  out.forEach((l, i) => {
+    if (i) { const p = out[i - 1]; const listy = x => /^([-*] |\d+\. |\*\*[^*]+ :\*\*)/.test(x); res += listy(p) && listy(l) && (/^\d/.test(p) === /^\d/.test(l)) ? '\n' : '\n\n'; }
+    res += l;
+  });
+  return res.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // ---------- Gestion des blocs ----------
@@ -663,7 +757,10 @@ function addText(txt) {
     selectedId = blocks[blocks.length - 1].id; renderBlocks(); changed();
     const n = parsed.g.reduce((s, g) => s + g[1].length, 0);
     toast(`Liste prête à cocher : ${n} éléments ✓`);
-  } else { addBlock('text', { text: txt }); toast('Texte ajouté'); }
+  } else {
+    const nice = !hasMarkdown(txt) && txt.includes('\n') ? autoFormat(txt) : txt;
+    addBlock('text', { text: nice }); toast(nice !== txt ? 'Texte ajouté et mis en forme ✨' : 'Texte ajouté');
+  }
 }
 async function importFiles(files, target) {
   if (isLabelTpl() && !target) {
