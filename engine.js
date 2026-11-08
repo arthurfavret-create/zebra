@@ -414,6 +414,21 @@ function tocGroups(b) {
   if (groups.length > 1 && !groups[0].head && !groups[0].rows.length) groups.shift();
   return groups;
 }
+// Remet le texte lui-même dans l'ordre alphabétique (chaque rubrique triée séparément)
+function sortTocText(text) {
+  const blocks = [[]]; const heads = [null];
+  (text || '').split('\n').forEach(l => {
+    if (!l.trim()) return;
+    if (/^\s*#/.test(l)) { blocks.push([]); heads.push(l.trim()); } else blocks[blocks.length - 1].push(l.trim());
+  });
+  const key = l => { const r = parseTocLine(l); return r && r.name || l; };
+  const out = [];
+  blocks.forEach((rows, i) => {
+    if (heads[i]) out.push(heads[i]);
+    rows.sort((a, c) => key(a).localeCompare(key(c), 'fr', { sensitivity: 'base', numeric: true })).forEach(r => out.push(r));
+  });
+  return out.join('\n');
+}
 function tocHasContent(b) { return !!((b.title || '').trim() || (b.items || '').trim() || (+b.blank || 0) > 0); }
 function renderTocBlock(ctx, b, W, draw) {
   const fk = fontKey(b.font || state.font), F = FONTS[fk], family = F.css;

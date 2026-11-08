@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611080047';
+const APP_VERSION = '202611080106';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -264,7 +264,7 @@ function card(b) {
         g.rows.forEach(r => { if (n++ < 14) preview.append(h('div', { class: 'r' + (r.page ? '' : ' miss') }, h('span', { class: 'n' }, r.name), h('span', { class: 'd' }), h('span', { class: 'p' }, r.page || '?'))); });
       });
       if (n > 14) preview.append(h('div', { style: 'opacity:.6' }, `… et ${n - 14} autres`));
-      if (!n) preview.append(h('div', { style: 'opacity:.5' }, 'Touche pour écrire, ou importe une photo'));
+      if (!n) preview.append(h('div', { style: 'opacity:.5' }, 'Touche pour écrire, ou lis une photo avec Claude'));
       if (+b.blank) preview.append(h('div', { style: 'opacity:.55;font-size:14px;margin-top:4px' }, `+ ${b.blank} ligne${b.blank > 1 ? 's' : ''} vide${b.blank > 1 ? 's' : ''} à remplir`));
     };
     refreshPreview();
@@ -274,15 +274,16 @@ function card(b) {
     preview.style.display = b.id === selectedId ? 'none' : '';
     c.append(title, preview, ta);
     requestAnimationFrame(() => autosize(ta));
-    c._onSelect = on => { ta.style.display = on ? '' : 'none'; preview.style.display = on ? 'none' : ''; if (on) autosize(ta); };
-    const apply = text => { ta.value = text; autosize(ta); set('items', text); refreshPreview(); };
+    // ordre A → Z : le texte se range dès qu'on quitte le champ, après un import ou en activant l'option
+    const resort = () => { if (!b.sort) return; const t = sortTocText(ta.value); if (t !== ta.value.replace(/\n+$/, '')) { ta.value = t; autosize(ta); set('items', t); refreshPreview(); } };
+    ta.addEventListener('blur', resort);
+    c._onSelect = on => { ta.style.display = on ? '' : 'none'; preview.style.display = on ? 'none' : ''; if (on) autosize(ta); else resort(); };
     const blankLab = h('span', { style: 'font-size:13px;color:var(--mute);min-width:96px' });
     const showBlank = v => blankLab.textContent = v ? `${v} ligne${v > 1 ? 's' : ''} vide${v > 1 ? 's' : ''}` : 'Aucune ligne vide';
     showBlank(+b.blank || 0);
-    const sortT = h('button', { class: 'toggle' + (b.sort ? ' on' : ''), onclick: e => { e.stopPropagation(); sortT.classList.toggle('on'); set('sort', sortT.classList.contains('on')); refreshPreview(); } }, h('i'), 'Ordre A → Z');
+    const sortT = h('button', { class: 'toggle' + (b.sort ? ' on' : ''), onclick: e => { e.stopPropagation(); sortT.classList.toggle('on'); set('sort', sortT.classList.contains('on')); refreshPreview(); resort(); } }, h('i'), 'Ordre A → Z');
     more.append(
-      h('button', { class: 'magic', onclick: e => { e.stopPropagation(); tocFromFile(b, apply); } }, '📷 Photo / PDF'),
-      h('button', { class: 'ai-btn', onclick: e => { e.stopPropagation(); openAI(b, 'toc'); } }, '✍️ Écriture à la main : Claude'),
+      h('button', { class: 'ai-btn', onclick: e => { e.stopPropagation(); openAI(b, 'toc'); } }, '📷 Lire une photo avec Claude'),
       h('label', { class: 'slider', title: 'Lignes vides à remplir à la main' }, '✎',
         h('input', { type: 'range', min: 0, max: 20, step: 1, value: +b.blank || 0, oninput: e => { const v = +e.target.value; showBlank(v); set('blank', v); refreshPreview(); } }), blankLab),
       seg(b.leader || 'dots', [['dots', '·····', 'Pointillés'], ['line', '———', 'Trait fin'], ['none', 'Rien', 'Sans liaison']], v => set('leader', v)),
@@ -1053,40 +1054,8 @@ function renderLabelEditor() {
 
 
 // ---------- Listes avec Claude (via l'appli Claude, sans clé API) ----------
-// ---------- Sommaire : lecture d'une photo (OCR sur l'iPad) ou d'un PDF ----------
-let ocrWorker = null;
-function loadScript(src) {
-  return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error('chargement impossible : ' + src)); document.head.append(sc); });
-}
-async function getOcr(progress) {
-  if (ocrWorker) return ocrWorker;
-  if (!window.Tesseract) await loadScript('lib/ocr/tesseract.min.js?v=' + APP_VERSION);
-  const base = new URL('lib/ocr/', location.href).href;
-  ocrWorker = await Tesseract.createWorker('fra', 1, {
-    workerPath: base + 'worker.min.js', corePath: base, langPath: base.replace(/\/$/, ''), workerBlobURL: false,
-    logger: m => { if (progress && m && m.status) progress(m); },
-  });
-  await ocrWorker.setParameters({ preserve_interword_spaces: '1' });
-  return ocrWorker;
-}
-// Photo → image nettoyée (niveaux de gris, contraste étiré, 2400 px max)
-async function ocrPrepare(file) {
-  const src = await readAs(file, 'url');
-  const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image illisible')); i.src = src; });
-  const k = Math.min(1, 2400 / Math.max(im.naturalWidth, im.naturalHeight));
-  const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
-  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, c.width, c.height);
-  const id = x.getImageData(0, 0, c.width, c.height), d = id.data, hist = new Uint32Array(256);
-  for (let i = 0; i < d.length; i += 4) { const v = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0; d[i] = v; hist[v]++; }
-  const tot = d.length / 4; let lo = 0, hi = 255, acc = 0;
-  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > tot * 0.01) { lo = v; break; } }
-  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > tot * 0.25) { hi = v; break; } } // le papier = le quart le plus clair
-  const span = Math.max(30, hi - lo);
-  for (let i = 0; i < d.length; i += 4) { const v = Math.max(0, Math.min(255, (d[i] - lo) * 255 / span)); d[i] = d[i + 1] = d[i + 2] = v; }
-  x.putImageData(id, 0, 0);
-  return c;
-}
-// Texte brut (OCR, PDF ou réponse de Claude) → lignes « Nom 12 » et « # Rubrique »
+// ---------- Sommaire : lecture d'une photo via l'appli Claude ----------
+// Réponse de Claude (ou texte collé) → lignes « Nom 12 » et « # Rubrique »
 function tocParseText(text) {
   const out = [], seen = new Set();
   const fixNum = t => /\d/.test(t) && /^[0-9OoIlS|B\-–\/]+$/.test(t) ? t.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/B/g, '8') : t;
@@ -1109,71 +1078,9 @@ function tocParseText(text) {
   });
   return out;
 }
-// Lecture « en colonnes » : on repère la colonne des numéros de page (alignés à droite), puis pour chaque numéro
-// les mots à sa hauteur, à gauche, à partir du bord gauche des noms. Le bruit des bords de la photo est ignoré.
-function tocFromWords(data, W) {
-  const words = [];
-  (data.blocks || []).forEach(bl => (bl.paragraphs || []).forEach(pa => (pa.lines || []).forEach(li => (li.words || []).forEach(w => {
-    const t = (w.text || '').trim(); if (!t || !w.bbox) return;
-    const b = w.bbox; words.push({ t, c: w.confidence, x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1, cy: (b.y0 + b.y1) / 2, h: b.y1 - b.y0, line: li });
-  }))));
-  const isNum = t => /^\d{1,3}(?:[-–]\d{1,3})?$/.test(t.replace(/[.,:;]+$/, ''));
-  const nums = words.filter(w => isNum(w.t) && w.c > 45);
-  if (nums.length < 3) return null;
-  // colonne des numéros la plus fournie (fin des numéros à ±4 % de largeur)
-  const tol = W * 0.06;
-  let best = null;
-  nums.forEach(n => { const g = nums.filter(m => Math.abs(m.x1 - n.x1) < tol); if (!best || g.length > best.length) best = g; });
-  if (best.length < 3) return null;
-  const colX = Math.min(...best.map(n => n.x0));
-  const letters = t => (t.match(/\p{L}/gu) || []).length;
-  // mots d'une ligne Tesseract situés à gauche de la colonne des numéros
-  const lineWords = (li, maxX) => words.filter(w => w.line === li && w.x1 < maxX);
-  // bord gauche des noms : médiane du premier vrai mot de chaque ligne numérotée
-  const starts = [];
-  best.forEach(n => { const ws = lineWords(n.line, n.x0).filter(w => letters(w.t) >= 3 && w.c > 50).sort((a, b) => a.x0 - b.x0); if (ws[0]) starts.push(ws[0].x0); });
-  if (!starts.length) return null;
-  starts.sort((a, b) => a - b);
-  const left = starts[Math.floor(starts.length / 2)] - W * 0.03;
-  const clean = ws => ws.filter(w => w.x0 >= left && !/^[.…·_\-–—]+$/.test(w.t)).sort((a, b) => a.x0 - b.x0)
-    .map(w => w.t).join(' ').replace(/[\s.…·_:;|,\-–—]+$/, '').replace(/^[^\p{L}\d(]+/u, '').trim();
-  const numLines = new Set(best.map(n => n.line));
-  const usedLines = new Set();
-  const items = [];
-  best.slice().sort((a, b) => a.cy - b.cy).forEach(n => {
-    let li = n.line, name = clean(lineWords(li, n.x0));
-    if (letters(name) < 2) { // numéro isolé : on le rattache à la ligne de noms la plus proche qui n'a pas de numéro
-      let near = null;
-      words.forEach(w => { if (!numLines.has(w.line) && !usedLines.has(w.line) && w.x0 >= left && w.x1 < colX && letters(w.t) >= 3 && w.c > 70 && Math.abs(w.cy - n.cy) < n.h * 2.5 && (!near || Math.abs(w.cy - n.cy) < Math.abs(near.cy - n.cy))) near = w; });
-      if (!near) return;
-      li = near.line; name = clean(lineWords(li, colX));
-    }
-    usedLines.add(li);
-    if (letters(name) >= 2) items.push({ y: n.cy, text: `${name} ${n.t.replace(/[.,:;]+$/, '').replace('–', '-')}` });
-  });
-  const y0 = Math.min(...best.map(n => n.cy)) - W * 0.12, y1 = Math.max(...best.map(n => n.cy)) + W * 0.05;
-  // lignes de noms bien lues mais sans numéro (numéro manqué) : gardées, à compléter
-  const seenLine = new Set();
-  words.forEach(w => {
-    const li = w.line; if (seenLine.has(li) || numLines.has(li) || usedLines.has(li)) return; seenLine.add(li);
-    const ws = lineWords(li, colX).filter(x => x.x0 >= left);
-    if (!ws.length || ws.some(x => x.c < 80) || w.cy < y0 || w.cy > y1) return;
-    const name = clean(ws); if (letters(name) < 3 || /^[\p{Lu}\s&'’-]+$/u.test(name)) return;
-    if (Math.abs(Math.min(...ws.map(x => x.x0)) - (left + W * 0.03)) > W * 0.03) return;
-    items.push({ y: ws[0].cy, text: name });
-  });
-  // intertitres en capitales alignés à gauche (« SALÉ »), entre la première et la dernière entrée
-    const used = new Set();
-  words.filter(w => w.x0 >= left && w.x0 < left + W * 0.08 && w.cy > y0 && w.cy < y1 && w.c > 60 && /^[\p{Lu}][\p{Lu}&'’-]{2,}$/u.test(w.t)).forEach(w => {
-    if (used.has(w.line) || items.some(it => Math.abs(it.y - w.cy) < w.h)) return; used.add(w.line);
-    const t = w.t.toLocaleLowerCase('fr'); items.push({ y: w.cy, text: '# ' + t.charAt(0).toLocaleUpperCase('fr') + t.slice(1) });
-  });
-  items.sort((a, b) => a.y - b.y);
-  return items.map(i => i.text).join('\n');
-}
 function tocMerge(b, lines, apply) {
   const n = lines.filter(l => !l.startsWith('#')).length;
-  if (!n) { toast('Je ne trouve aucune entrée dans ce document', true); return; }
+  if (!n) { toast('Je ne trouve aucune entrée dans ce texte', true); return; }
   let text = lines.join('\n');
   if ((b.items || '').trim()) {
     const have = new Set((b.items || '').split('\n').map(l => { const r = parseTocLine(l); return r && r.name ? r.name.toLocaleLowerCase('fr') : ''; }));
@@ -1185,32 +1092,6 @@ function tocMerge(b, lines, apply) {
   const miss = lines.filter(l => { const r = parseTocLine(l); return r.name && !r.page; }).length;
   toast(`${n} entrée${n > 1 ? 's' : ''} lue${n > 1 ? 's' : ''}` + (miss ? ` · ${miss} sans numéro (en rose) à vérifier` : ' ✓'));
 }
-function tocFromFile(b, apply) {
-  const inp = h('input', { type: 'file', accept: 'image/*,application/pdf', style: 'display:none' });
-  document.body.append(inp);
-  inp.onchange = async () => {
-    const file = inp.files && inp.files[0]; inp.remove(); if (!file) return;
-    try {
-      if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
-        toast('Lecture du PDF…');
-        const r = await pdfToText(file);
-        tocMerge(b, tocParseText(r.text.replace(/^>\s?/gm, '')), apply);
-        return;
-      }
-      toast('Préparation de la photo…');
-      const img = await ocrPrepare(file);
-      let last = 0;
-      const worker = await getOcr(m => {
-        const now = Date.now(); if (now - last < 700) return; last = now;
-        toast(m.status === 'recognizing text' ? `Lecture de la photo… ${Math.round((m.progress || 0) * 100)} %` : 'Préparation de la lecture (1re fois : quelques secondes)…');
-      });
-      const { data } = await worker.recognize(img, {}, { text: true, blocks: true });
-      tocMerge(b, tocParseText(tocFromWords(data, img.width) || data.text || ''), apply);
-    } catch (e) { toast('Lecture impossible : ' + (e.message || e), true); }
-  };
-  inp.click();
-}
-
 const CLAUDE_TOC_PROMPT = `Je t'envoie la photo d'un sommaire imprimé, avec peut-être des lignes ajoutées à la main.
 Recopie TOUTES les entrées, y compris celles écrites à la main, sans aucun commentaire, une par ligne, exactement dans ce format :
 # Rubrique
@@ -1252,7 +1133,7 @@ function openAI(block, kind) {
       const lines = tocParseText(pasteBox.value);
       if (!lines.length) { toast('Je ne trouve pas de sommaire dans ce texte', true); return; }
       $('aiBg').classList.remove('open');
-      tocMerge(block, lines, t => { block.items = t; selectedId = block.id; renderBlocks(); changed(); });
+      tocMerge(block, lines, t => { block.items = block.sort ? sortTocText(t) : t; selectedId = block.id; renderBlocks(); changed(); });
       return;
     }
     const r = parseClaudeList(pasteBox.value);
@@ -1265,7 +1146,7 @@ function openAI(block, kind) {
   };
   pasteBox.addEventListener('paste', () => setTimeout(() => { if (pasteBox.value.trim()) use.click(); }, 50));
   sheet.append(
-    h('h3', {}, toc ? '✍️ Lire la photo avec Claude' : '🎙️ Ta liste avec Claude'),
+    h('h3', {}, toc ? '📷 Lire une photo avec Claude' : '🎙️ Ta liste avec Claude'),
     step('1', 'Ouvre Claude, la consigne est déjà prête',
       h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
         h('a', { href: url, class: 'ai-btn', style: 'display:inline-flex;align-items:center;text-decoration:none' }, 'Ouvrir l\'appli Claude'),
