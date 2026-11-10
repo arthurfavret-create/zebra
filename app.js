@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611102114';
+const APP_VERSION = '202611102150';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1024,14 +1024,24 @@ async function imprimerViaJarvis(zpl, T) {
     if (c !== 'file') return bluetoothOuStop(c);
     miseEnAttente = true;
   }
+  const titre = titreImpression(T);
+  // Zebra disponible et des tickets attendent (hors série) : « le mien seulement » ou « voir la file »
+  let mode = 'auto';
+  if (!dymo && etat.disponible && !etat.serie && etat.en_attente > 0) {
+    const n = etat.en_attente;
+    const c = await choisir(`📥 ${n} ticket${n > 1 ? 's attendent' : ' attend'} à la maison`, null,
+      [['moi', '🧾 Imprimer le mien seulement'], ['voir', '🗂 Voir les tickets en attente', true]]);
+    if (c === 'voir') { setTimeout(syncTop, 0); await ouvrirFile({ zpl, titre }); return true; }
+    if (c !== 'moi') { setTimeout(syncTop, 0); return true; }
+    mode = 'immediat';
+  }
   label.textContent = 'Envoi à Jarvis… · toucher pour annuler';
   fill.style.width = '40%';
-  const titre = titreImpression(T);
   let r;
   try {
     r = dymo
       ? await jarvisPost('/api/direct', { zpl, titre, source: 'Zebra Studio', type: 'etiquette' }, 90000)
-      : await jarvisPost('/api/tickets', { zpl, titre, source: 'Zebra Studio' }, 90000);
+      : await jarvisPost('/api/tickets', { zpl, titre, source: 'Zebra Studio', mode }, 90000);
   } catch (e) {
     if (cancelSend) throw new Error('annulé');
     fill.style.width = '0'; setTimeout(syncTop, 0);
@@ -1044,6 +1054,7 @@ async function imprimerViaJarvis(zpl, T) {
     if (dymo) { label.textContent = 'Imprimé ✓'; confetti(); toast('🏷️ Imprimé par Jarvis · pense à bien caler l\'étiquette'); }
     else if (d.resultat === 'imprime') { label.textContent = 'Imprimé ✓'; confetti(); toast('🧾 Imprimé par Jarvis'); }
     else if (d.erreur) { label.textContent = 'En attente'; toast('⚠️ Jarvis n\'a pas pu l\'imprimer : ticket gardé en attente', true); }
+    else if (d.serie_en_cours) { label.textContent = 'En attente'; toast('🗂 Jarvis imprime une série, ton ticket attend'); }
     else { label.textContent = 'Envoyé ✓'; toast(miseEnAttente ? `📥 Ticket envoyé à Jarvis (${d.en_attente} en attente)` : `📥 Ajouté à la file (${d.en_attente} en attente)`); }
     setTimeout(() => { fill.style.width = '0'; syncTop(); }, 2200);
     return true;
@@ -1068,6 +1079,150 @@ async function reglageViaJarvis(zpl) {
   if (r.ok) return 'fait';
   throw new Error(r.status === 409 ? 'Jarvis imprime un ticket, réessaie dans quelques secondes' : (r.data && r.data.message) || 'erreur ' + r.status);
 }
+
+// ---------- File d'attente de Jarvis : pastille « 📥 N », liste à cocher, série un par un ----------
+let etatJarvis = null, fluxJarvis = null, fileOuverte = null, minuteurPerte = null;
+function quandCourt(iso) {
+  const d = new Date(iso), auj = new Date();
+  const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
+  if (d.toDateString() === auj.toDateString()) return `aujourd'hui ${heure}`;
+  const hier = new Date(auj); hier.setDate(auj.getDate() - 1);
+  if (d.toDateString() === hier.toDateString()) return `hier ${heure}`;
+  return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} ${heure}`;
+}
+// Pastille visible seulement si des tickets attendent ET que la Zebra est disponible
+function majPastille() {
+  const b = $('btnFile');
+  const n = etatJarvis && etatJarvis.disponible ? etatJarvis.en_attente : 0;
+  b.style.display = n ? '' : 'none';
+  b.textContent = `📥 ${n}`;
+}
+// État de Jarvis en temps réel (seulement quand la destination est Jarvis)
+function ecouterJarvis() {
+  if (fluxJarvis) { fluxJarvis.close(); fluxJarvis = null; }
+  clearTimeout(minuteurPerte);
+  etatJarvis = null; majPastille();
+  if (!viaJarvis() || !window.EventSource) return;
+  fluxJarvis = new EventSource(jarvisUrl() + '/api/evenements');
+  fluxJarvis.addEventListener('etat', e => {
+    clearTimeout(minuteurPerte);
+    try { etatJarvis = JSON.parse(e.data); } catch (_) { return; }
+    majPastille();
+    if (fileOuverte) fileOuverte.maj(etatJarvis);
+  });
+  // coupure : le navigateur se reconnecte tout seul ; on n'efface l'état que si rien ne revient en 8 s
+  fluxJarvis.onerror = () => {
+    clearTimeout(minuteurPerte);
+    minuteurPerte = setTimeout(() => { etatJarvis = null; majPastille(); }, 8000);
+  };
+}
+// Liste des tickets en attente. mien = { zpl, titre } : le ticket qu'on vient de composer
+// (pas encore envoyé), en haut, coché par défaut, et qui sort EN PREMIER. Les autres ne sont pas
+// cochés ; ceux qu'on coche sortent ensuite dans leur ordre d'arrivée, un par un avec « Suivant ».
+// Se termine quand la feuille se ferme ; une série en cours continue sur Jarvis.
+function ouvrirFile(mien) {
+  return new Promise(resolve => {
+    const bg = $('aiBg'), sheet = $('aiSheet');
+    let tickets = [], etat = etatJarvis, mienCoche = !!mien, confirme = null, occupe = false;
+    const choix = new Set();
+    const fond = e => { if (e.target === bg) fermer(); };
+    function fermer() {
+      if (!fileOuverte) return;
+      fileOuverte = null; bg.classList.remove('open'); bg.removeEventListener('click', fond); resolve();
+    }
+    const verifier = r => { if (!r.ok) throw new Error((r.data && r.data.message) || 'erreur ' + r.status); return r.data || {}; };
+    async function recharger() {
+      const [re, rt] = await Promise.all([jarvisFetch('/api/etat', {}, 8000), jarvisFetch('/api/tickets', {}, 8000)]);
+      if (re.ok) etat = re.data;
+      if (rt.ok) { tickets = rt.data; for (const id of [...choix]) if (!tickets.some(t => t.id === id)) choix.delete(id); }
+      rendre();
+    }
+    async function agir(fn) {
+      if (occupe) return;
+      occupe = true; rendre();
+      try { await fn(); } catch (e) { toast('😕 ' + (e.message || e), true); }
+      finally { occupe = false; if (fileOuverte) await recharger().catch(() => rendre()); }
+    }
+    const fini = () => { fermer(); confetti(); toast('🎉 Fini, tout est sorti !'); };
+    async function imprimer() {
+      const ids = tickets.filter(t => choix.has(t.id)).map(t => t.id); // ordre d'arrivée
+      if (mien) { // le mien rejoint la file ; coché, il sort en premier
+        const d = verifier(await jarvisPost('/api/tickets', { zpl: mien.zpl, titre: mien.titre, source: 'Zebra Studio', mode: 'file' }, 90000));
+        if (mienCoche) ids.unshift(d.id);
+        mien = null;
+      }
+      if (!ids.length) { fermer(); toast('📥 Ton ticket attend à la maison'); return; }
+      if (verifier(await jarvisPost('/api/serie', { ids }, 90000)).termine) fini();
+    }
+    async function suivant() { if (verifier(await jarvisPost('/api/serie/suivant', {}, 90000)).termine) fini(); }
+    async function arreter() { verifier(await jarvisPost('/api/serie/arreter', {}, 15000)); fermer(); toast('⏹️ Série arrêtée, les autres attendent'); }
+    function supprimer(id) {
+      if (confirme !== id) {
+        confirme = id; rendre();
+        setTimeout(() => { if (confirme === id) { confirme = null; rendre(); } }, 3000);
+        return;
+      }
+      confirme = null;
+      agir(async () => { verifier(await jarvisFetch(`/api/tickets/${id}`, { method: 'DELETE' }, 15000)); choix.delete(id); });
+    }
+    const si = (cond, attrs) => (cond ? attrs : {});
+    function ligne(coche, titre, details, basculer, id, cle) {
+      const conf = id != null && confirme === id;
+      return h('div', { class: 'result', 'data-ticket': cle, onclick: basculer,
+          style: 'display:flex;align-items:center;gap:12px;margin:8px 0;padding:12px 14px;cursor:pointer' + (coche ? ';box-shadow:inset 0 0 0 2px var(--pink)' : '') },
+        h('span', { style: 'flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-weight:800;color:#fff;'
+          + (coche ? 'background:var(--pink);border:2.5px solid var(--pink)' : 'border:2.5px solid #d9c3cb') }, coche ? '✓' : ''),
+        h('span', { style: 'flex:1;min-width:0;overflow-wrap:anywhere' }, h('b', { style: 'display:block' }, titre),
+          h('small', { style: 'color:var(--mute)' }, details)),
+        id == null ? null : h('button', Object.assign({ class: 'mini-chip', 'data-suppr': id, style: conf ? 'background:var(--pink);color:#fff' : '',
+          onclick: e => { e.stopPropagation(); supprimer(id); } }, si(occupe, { disabled: '' })), conf ? 'Supprimer ?' : '🗑️'));
+    }
+    function rendre() {
+      if (!fileOuverte) return;
+      sheet.innerHTML = '';
+      const dispo = !!(etat && etat.disponible);
+      const s = etat && etat.serie;
+      if (s) {
+        sheet.append(...[
+          h('h3', {}, `🧾 ${s.faits} / ${s.total}`),
+          h('p', { class: 'hint', style: 'font-size:16px;color:var(--ink)' }, s.faits ? 'Déchire le ticket, puis :' : 'C’est parti :'),
+          h('button', Object.assign({ class: 'go', 'data-file': 'suivant', onclick: () => agir(suivant) }, si(!dispo || occupe, { disabled: '' })),
+            occupe ? '🖨️ Impression…' : '▶ Suivant'),
+          s.prochain ? h('p', { class: 'hint', style: 'text-align:center;margin:8px 0 0' }, 'Prochain : ' + s.prochain) : null,
+          dispo ? null : h('p', { class: 'hint', style: 'text-align:center' }, '💤 La série reprendra quand la Zebra sera disponible'),
+          h('button', Object.assign({ class: 'mini-chip', 'data-file': 'arreter', style: 'margin-top:12px;width:100%;height:44px', onclick: () => agir(arreter) },
+            si(occupe, { disabled: '' })), '⏹ Arrêter la série'),
+          h('button', { class: 'mini-chip', style: 'margin-top:8px;width:100%;height:44px;background:none', onclick: fermer }, 'Fermer (la série reste sur Jarvis)'),
+        ].filter(Boolean));
+        return;
+      }
+      const n = choix.size + (mien && mienCoche ? 1 : 0);
+      const liste = tickets.map(t => ligne(choix.has(t.id), t.titre, `${t.source} · ${quandCourt(t.cree_le)}`,
+        () => { choix.has(t.id) ? choix.delete(t.id) : choix.add(t.id); rendre(); }, t.id, t.id));
+      if (mien) liste.unshift(ligne(mienCoche, mien.titre || 'Ton ticket', '✨ le tien · sort en premier', () => { mienCoche = !mienCoche; rendre(); }, null, 'mien'));
+      sheet.append(...[
+        h('h3', {}, '📥 Tickets en attente'),
+        ...liste,
+        liste.length ? null : h('p', { class: 'hint' }, 'Plus rien en attente 🎉'),
+        h('button', Object.assign({ class: 'go', 'data-file': 'imprimer', style: 'margin-top:12px', onclick: () => agir(imprimer) },
+          si(!n || !dispo || occupe, { disabled: '' })),
+          occupe ? '🖨️ Impression…' : n > 1 ? `🖨️ Imprimer ces ${n} tickets` : n ? '🖨️ Imprimer ce ticket' : '🖨️ Coche les tickets à imprimer'),
+        !dispo ? h('p', { class: 'hint', style: 'text-align:center;margin:8px 0 0' }, '💤 Zebra indisponible sur Jarvis')
+          : n > 1 ? h('p', { class: 'hint', style: 'text-align:center;margin:8px 0 0' }, 'Ils sortiront un par un, avec « Suivant » entre chaque.') : null,
+        mien && !mienCoche && n ? h('p', { class: 'hint', style: 'text-align:center;margin:4px 0 0' }, 'Le tien, non coché, attendra dans la file.') : null,
+        h('button', { class: 'mini-chip', style: 'margin-top:12px;width:100%;height:44px', onclick: fermer }, mien ? 'Annuler' : 'Fermer'),
+      ].filter(Boolean));
+    }
+    fileOuverte = { maj: e => { etat = e; recharger().catch(() => {}); } };
+    bg.addEventListener('click', fond);
+    sheet.innerHTML = '';
+    sheet.append(h('h3', {}, '📥 Tickets en attente'), h('p', { class: 'hint' }, 'Chargement…'));
+    bg.classList.add('open');
+    recharger().catch(() => { fermer(); toast('Jarvis ne répond pas', true); });
+  });
+}
+$('btnFile').onclick = () => { if (!fileOuverte) ouvrirFile(null); };
+ecouterJarvis();
 
 $('btnConnect').onclick = connect;
 // Avancer le papier : 2 cm en ticket ; une étiquette entière en mode Étiquette (pour rester calé sur le pas)
@@ -1553,7 +1708,7 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
 (function () {
   const boutons = document.querySelectorAll('#destSeg button');
   const majDest = () => boutons.forEach(b => b.classList.toggle('on', b.dataset.v === destination()));
-  boutons.forEach(b => b.onclick = () => { try { localStorage.setItem('zebra-dest', b.dataset.v); } catch (_) {} majDest(); });
+  boutons.forEach(b => b.onclick = () => { try { localStorage.setItem('zebra-dest', b.dataset.v); } catch (_) {} majDest(); ecouterJarvis(); });
   majDest();
   const champ = $('jarvisUrl'), info = $('jarvisInfo');
   champ.value = jarvisUrl();
@@ -1562,7 +1717,9 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
     let v = champ.value.trim().replace(/\/+$/, '');
     if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
     champ.value = v;
+    const avant = jarvisUrl();
     try { if (v) localStorage.setItem('zebra-jarvis', v); else localStorage.removeItem('zebra-jarvis'); } catch (_) {}
+    if (jarvisUrl() !== avant) ecouterJarvis();
   };
   champ.addEventListener('change', enregistrer);
   $('btnJarvisTest').onclick = async () => {
