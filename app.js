@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611080208';
+const APP_VERSION = '202611102114';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -949,6 +949,126 @@ function confetti() {
     document.body.append(s); setTimeout(() => s.remove(), 1200);
   }
 }
+// ---------- Jarvis : impression par le serveur de la maison ----------
+// L'adresse est saisie dans ⚙︎ Réglages et gardée sur cet iPad (jamais dans le code public).
+// Tickets : imprimés tout de suite ou mis en file par Jarvis. Étiquettes et réglages : envoi direct,
+// jamais de file. Si Jarvis ne répond pas ou n'a pas la Zebra : proposition du Bluetooth direct.
+const JARVIS_DELAI = 2500; // « Jarvis répond ? » : court, pour basculer vite vers le Bluetooth
+let jarvisAbort = null;
+function jarvisUrl() { try { return (localStorage.getItem('zebra-jarvis') || '').trim().replace(/\/+$/, ''); } catch (_) { return ''; } }
+function destination() { try { return localStorage.getItem('zebra-dest') || 'jarvis'; } catch (_) { return 'jarvis'; } }
+function viaJarvis() { return destination() === 'jarvis' && !!jarvisUrl(); }
+async function jarvisFetch(path, opts, ms) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  if (opts.signal) opts.signal.addEventListener('abort', () => ctl.abort());
+  try {
+    const r = await fetch(jarvisUrl() + path, { method: opts.method || 'GET', body: opts.body, signal: ctl.signal,
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {} });
+    let data = null; try { data = await r.json(); } catch (_) {}
+    return { ok: r.ok, status: r.status, data };
+  } finally { clearTimeout(t); }
+}
+// État de Jarvis en 2,5 s au plus ; null s'il ne répond pas
+async function jarvisEtat() {
+  try { const r = await jarvisFetch('/api/etat', {}, JARVIS_DELAI); return r.ok && r.data ? r.data : null; } catch (_) { return null; }
+}
+function jarvisPost(path, corps, ms) {
+  jarvisAbort = new AbortController();
+  return jarvisFetch(path, { method: 'POST', body: JSON.stringify(corps), signal: jarvisAbort.signal }, ms)
+    .finally(() => { jarvisAbort = null; });
+}
+// Petite question à l'écran ; renvoie la clé choisie, ou null (Annuler / toucher à côté)
+function choisir(titre, texte, options) {
+  return new Promise(resolve => {
+    const bg = $('aiBg'), sheet = $('aiSheet');
+    let fini = false;
+    const fond = e => { if (e.target === bg) finir(null); };
+    const finir = v => { if (fini) return; fini = true; bg.classList.remove('open'); bg.removeEventListener('click', fond); resolve(v); };
+    sheet.innerHTML = '';
+    sheet.append(...[h('h3', {}, titre),
+      texte ? h('p', { class: 'hint', style: 'font-size:15px;color:var(--ink)' }, texte) : null,
+      ...options.map(([v, label, discret]) => h('button', { class: 'go', 'data-choix': v,
+        style: 'margin-top:10px' + (discret ? ';background:var(--bg);color:var(--ink)' : ''), onclick: () => finir(v) }, label)),
+      h('button', { class: 'mini-chip', style: 'margin-top:12px;width:100%;height:44px', onclick: () => finir(null) }, 'Annuler')].filter(Boolean));
+    bg.addEventListener('click', fond);
+    bg.classList.add('open');
+  });
+}
+const PAS_DE_REPONSE = ['🏠 Jarvis ne répond pas', 'Tailscale est-il activé sur cet iPad ?'];
+const ZEBRA_INDISPO = '💤 Zebra indisponible sur Jarvis';
+// Titre lisible dans la file de Jarvis : titre de l'étiquette, sinon 1re ligne du ticket
+function titreImpression(T) {
+  if (T && T.title) return T.title.slice(0, 120);
+  const net = s => fillVars(String(s || '')).split('\n').map(l => l.replace(/[#>*_=+~`|☐☑\[\]]+/g, ' ').replace(/\s+/g, ' ').trim()).find(l => l) || '';
+  for (const b of state.blocks) {
+    const t = net(b.title) || net(b.text) || net(b.caption) || net(b.items);
+    if (t) return t.slice(0, 120);
+  }
+  return ''; // Jarvis mettra « Ticket du … »
+}
+// Bouton Imprimer quand la destination est Jarvis.
+// Renvoie true si c'est réglé (imprimé, mis en file, annulé, erreur affichée), false pour passer au Bluetooth.
+async function imprimerViaJarvis(zpl, T) {
+  const label = $('printLabel'), fill = $('fill'), dymo = state.mode === 'dymo';
+  label.textContent = 'Jarvis…';
+  const bluetoothOuStop = c => { if (c === 'bt') return false; setTimeout(syncTop, 0); return true; };
+  const etat = await jarvisEtat();
+  if (cancelSend) throw new Error('annulé');
+  let miseEnAttente = false;
+  if (!etat) {
+    return bluetoothOuStop(await choisir(...PAS_DE_REPONSE, [['bt', '🦓 Imprimer ici en Bluetooth']]));
+  }
+  if (!etat.disponible) {
+    if (dymo) return bluetoothOuStop(await choisir(ZEBRA_INDISPO, 'Les étiquettes ne sont jamais mises en attente.', [['bt', '🦓 Imprimer ici en Bluetooth']]));
+    const c = await choisir(ZEBRA_INDISPO, null, [['file', '📥 Mettre en attente à la maison'], ['bt', '🦓 Imprimer ici en Bluetooth', true]]);
+    if (c !== 'file') return bluetoothOuStop(c);
+    miseEnAttente = true;
+  }
+  label.textContent = 'Envoi à Jarvis… · toucher pour annuler';
+  fill.style.width = '40%';
+  const titre = titreImpression(T);
+  let r;
+  try {
+    r = dymo
+      ? await jarvisPost('/api/direct', { zpl, titre, source: 'Zebra Studio', type: 'etiquette' }, 90000)
+      : await jarvisPost('/api/tickets', { zpl, titre, source: 'Zebra Studio' }, 90000);
+  } catch (e) {
+    if (cancelSend) throw new Error('annulé');
+    fill.style.width = '0'; setTimeout(syncTop, 0);
+    toast('Envoi à Jarvis impossible (connexion perdue). Regarde sa file avant de réimprimer.', true);
+    return true;
+  }
+  if (r.ok) {
+    fill.style.width = '100%';
+    const d = r.data || {};
+    if (dymo) { label.textContent = 'Imprimé ✓'; confetti(); toast('🏷️ Imprimé par Jarvis · pense à bien caler l\'étiquette'); }
+    else if (d.resultat === 'imprime') { label.textContent = 'Imprimé ✓'; confetti(); toast('🧾 Imprimé par Jarvis'); }
+    else if (d.erreur) { label.textContent = 'En attente'; toast('⚠️ Jarvis n\'a pas pu l\'imprimer : ticket gardé en attente', true); }
+    else { label.textContent = 'Envoyé ✓'; toast(miseEnAttente ? `📥 Ticket envoyé à Jarvis (${d.en_attente} en attente)` : `📥 Ajouté à la file (${d.en_attente} en attente)`); }
+    setTimeout(() => { fill.style.width = '0'; syncTop(); }, 2200);
+    return true;
+  }
+  fill.style.width = '0'; setTimeout(syncTop, 0);
+  if (r.status === 409) { toast('Jarvis imprime un ticket, réessaie dans quelques secondes', true, { label: 'Réessayer', run: () => $('btnPrint').click() }); return true; }
+  if (r.status === 503 && dymo) return bluetoothOuStop(await choisir(ZEBRA_INDISPO, 'Les étiquettes ne sont jamais mises en attente.', [['bt', '🦓 Imprimer ici en Bluetooth']]));
+  toast('😕 Jarvis : ' + ((r.data && r.data.message) || 'erreur ' + r.status), true);
+  return true;
+}
+// Réglages (avance papier, préparation des étiquettes) : envoi direct via Jarvis.
+// Renvoie 'fait', 'bluetooth' (passer au Bluetooth) ou 'annule'.
+async function reglageViaJarvis(zpl) {
+  const etat = await jarvisEtat();
+  if (!etat || !etat.disponible) {
+    const c = await choisir(...(etat ? [ZEBRA_INDISPO, null] : PAS_DE_REPONSE), [['bt', '🦓 Utiliser le Bluetooth']]);
+    return c === 'bt' ? 'bluetooth' : 'annule';
+  }
+  let r;
+  try { r = await jarvisPost('/api/direct', { zpl, source: 'Zebra Studio', type: 'reglage' }, 30000); }
+  catch (_) { throw new Error('Jarvis ne répond plus'); }
+  if (r.ok) return 'fait';
+  throw new Error(r.status === 409 ? 'Jarvis imprime un ticket, réessaie dans quelques secondes' : (r.data && r.data.message) || 'erreur ' + r.status);
+}
+
 $('btnConnect').onclick = connect;
 // Avancer le papier : 2 cm en ticket ; une étiquette entière en mode Étiquette (pour rester calé sur le pas)
 let feeding = false;
@@ -956,10 +1076,16 @@ $('btnFeed').onclick = async () => {
   if (printing || feeding) return;
   feeding = true; $('btnFeed').style.opacity = '.5';
   try {
-    if (!(await ensureConnected())) return;
     const dymo = state.mode === 'dymo';
     const len = dymo ? labelDims().LL : 160;
-    await send(`^XA\n^MNN\n^PW${PW}\n^LL${len}\n^LH0,0\n^FO0,0^GB${PW},1,1,W^FS\n^PQ1\n^XZ\n`, () => {}, 20);
+    const zpl = `^XA\n^MNN\n^PW${PW}\n^LL${len}\n^LH0,0\n^FO0,0^GB${PW},1,1,W^FS\n^PQ1\n^XZ\n`;
+    if (viaJarvis()) {
+      const r = await reglageViaJarvis(zpl);
+      if (r === 'annule') return;
+      if (r === 'fait') { toast(dymo ? 'Une étiquette avancée (Jarvis)' : 'Papier avancé de 2 cm (Jarvis)'); return; }
+    }
+    if (!(await ensureConnected())) return;
+    await send(zpl, () => {}, 20);
     toast(dymo ? 'Une étiquette avancée' : 'Papier avancé de 2 cm');
   } catch (e) { toast('Avance impossible : ' + (e.message || e), true); }
   finally { feeding = false; $('btnFeed').style.opacity = ''; }
@@ -967,7 +1093,7 @@ $('btnFeed').onclick = async () => {
 $('btnForget').onclick = () => { rememberPrinter(''); toast('Imprimante oubliée : la prochaine connexion affichera toutes les Zebra'); };
 syncPrinter();
 $('btnPrint').onclick = async () => {
-  if (printing) { cancelSend = true; $('printLabel').textContent = 'Annulation…'; return; }
+  if (printing) { cancelSend = true; if (jarvisAbort) jarvisAbort.abort(); $('printLabel').textContent = 'Annulation…'; return; }
   cancelSend = false;
   // en étiquette à modèle, le contenu est dans le formulaire de l'étiquette, pas dans les blocs
   const L = state.label, T = isLabelTpl() ? labelTexts(L) : null;
@@ -978,6 +1104,7 @@ $('btnPrint').onclick = async () => {
   try {
     label.textContent = 'Préparation…';
     const zpl = buildZpl(await compose());
+    if (viaJarvis() && await imprimerViaJarvis(zpl, T)) return;
     label.textContent = 'Connexion…';
     if (!(await ensureConnected())) { syncTop(); return; }
     paper.classList.add('printing');
@@ -1268,9 +1395,17 @@ async function prepareLabels() {
   if (printing) return;
   printing = true;
   try {
-    if (!(await ensureConnected())) return;
-    toast(`Avance de ${pitchMm()} mm…`);
-    await send(prepZpl(), () => {}, 20);
+    let parJarvis = false;
+    if (viaJarvis()) {
+      const r = await reglageViaJarvis(prepZpl());
+      if (r === 'annule') return;
+      parJarvis = r === 'fait';
+    }
+    if (!parJarvis) {
+      if (!(await ensureConnected())) return;
+      toast(`Avance de ${pitchMm()} mm…`);
+      await send(prepZpl(), () => {}, 20);
+    }
     prepared = true; try { sessionStorage.setItem('zebra-prepared', '1'); } catch (_) {}
     renderPrepBanner();
     showPrepSteps();
@@ -1413,6 +1548,31 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
     b.classList.toggle('on', b.dataset.v === cur);
     b.onclick = () => { document.querySelectorAll('#chunkSeg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); try { localStorage.setItem('zebra-chunk', b.dataset.v); } catch (_) {} };
   });
+})();
+// Jarvis : destination par défaut et adresse (gardées sur cet iPad)
+(function () {
+  const boutons = document.querySelectorAll('#destSeg button');
+  const majDest = () => boutons.forEach(b => b.classList.toggle('on', b.dataset.v === destination()));
+  boutons.forEach(b => b.onclick = () => { try { localStorage.setItem('zebra-dest', b.dataset.v); } catch (_) {} majDest(); });
+  majDest();
+  const champ = $('jarvisUrl'), info = $('jarvisInfo');
+  champ.value = jarvisUrl();
+  info.textContent = jarvisUrl() ? '' : 'à saisir une fois, gardée sur cet iPad';
+  const enregistrer = () => {
+    let v = champ.value.trim().replace(/\/+$/, '');
+    if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
+    champ.value = v;
+    try { if (v) localStorage.setItem('zebra-jarvis', v); else localStorage.removeItem('zebra-jarvis'); } catch (_) {}
+  };
+  champ.addEventListener('change', enregistrer);
+  $('btnJarvisTest').onclick = async () => {
+    enregistrer();
+    if (!jarvisUrl()) { info.textContent = 'adresse à saisir'; return; }
+    info.textContent = 'test…';
+    const e = await jarvisEtat();
+    info.textContent = !e ? '❌ ne répond pas (Tailscale activé ?)'
+      : `✅ répond · ${e.disponible ? 'Zebra disponible' : '💤 Zebra indisponible'} · ${e.en_attente} en attente`;
+  };
 })();
 $('btnUpdate').onclick = () => { location.replace(location.pathname + '?v=' + Date.now()); };
 $('appVersion').textContent = 'Version ' + APP_VERSION.replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/, '$3/$2 $4:$5');

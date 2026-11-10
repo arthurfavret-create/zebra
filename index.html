@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#FFF6EA">
 <title>Zebra Studio</title>
-<link rel="stylesheet" href="fonts.css?v=202611080208">
+<link rel="stylesheet" href="fonts.css?v=202611102114">
 <style>
   :root {
     --bg:#FFF6EA; --card:#FFFFFF; --ink:#1A1823; --mute:#8A8494; --line:#EFE6D8;
@@ -362,6 +362,16 @@
 <div class="sheet-bg" id="sheetBg">
   <div class="sheet">
     <h3>Réglages</h3>
+    <div class="line"><span>Imprimer avec</span>
+      <span class="seg" id="destSeg"><button data-v="jarvis">🏠 Jarvis</button><button data-v="bluetooth">🦓 Bluetooth direct</button></span>
+    </div>
+    <div class="line" style="flex-wrap:wrap"><span>Adresse de Jarvis<br><small style="color:var(--mute)" id="jarvisInfo"></small></span>
+      <span style="display:flex;gap:8px;flex:1 1 260px;min-width:0">
+        <input id="jarvisUrl" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://…:8443"
+          style="flex:1;min-width:0;border:0;background:var(--bg);border-radius:12px;padding:10px 12px;font:inherit;font-size:15px">
+        <button class="btn" id="btnJarvisTest">Tester</button>
+      </span>
+    </div>
     <div class="line"><span>Imprimante<br><small style="color:var(--mute)" id="printerName"></small></span><button class="btn" id="btnForget">Oublier</button></div>
     <div class="line"><span>Vitesse d'envoi Bluetooth</span>
       <span class="seg" id="chunkSeg">
@@ -385,9 +395,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611080208"></script>
-<script src="draw.js?v=202611080208"></script>
-<script src="label.js?v=202611080208"></script>
-<script src="app.js?v=202611080208"></script>
+<script src="engine.js?v=202611102114"></script>
+<script src="draw.js?v=202611102114"></script>
+<script src="label.js?v=202611102114"></script>
+<script src="app.js?v=202611102114"></script>
 </body>
 </html>
