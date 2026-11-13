@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611102150';
+const APP_VERSION = '202611140005';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1006,9 +1006,23 @@ function titreImpression(T) {
   }
   return ''; // Jarvis mettra « Ticket du … »
 }
+// Aperçu PNG du ticket complet (pages[0] = tout le ticket, avant découpage en morceaux ^XA…^XZ),
+// taille réelle 384 px, noir et blanc tel que l'imprimante le tracera. '' si trop lourd : le ticket part sans aperçu.
+function miniatureTicket(page) {
+  try {
+    const c = document.createElement('canvas'); c.width = page.width; c.height = page.height;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(page, 0, 0);
+    const id = x.getImageData(0, 0, c.width, c.height), d = id.data;
+    for (let i = 0; i < d.length; i += 4) { const v = d[i] < 128 ? 0 : 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; } // même seuil que canvasToGFA
+    x.putImageData(id, 0, 0);
+    const url = c.toDataURL('image/png');
+    return url.length <= 1.9e6 ? url : ''; // ≈ 1,4 Mo de PNG (limite de Jarvis : 1,5 Mo)
+  } catch (_) { return ''; }
+}
 // Bouton Imprimer quand la destination est Jarvis.
 // Renvoie true si c'est réglé (imprimé, mis en file, annulé, erreur affichée), false pour passer au Bluetooth.
-async function imprimerViaJarvis(zpl, T) {
+async function imprimerViaJarvis(zpl, T, miniature) {
   const label = $('printLabel'), fill = $('fill'), dymo = state.mode === 'dymo';
   label.textContent = 'Jarvis…';
   const bluetoothOuStop = c => { if (c === 'bt') return false; setTimeout(syncTop, 0); return true; };
@@ -1031,7 +1045,7 @@ async function imprimerViaJarvis(zpl, T) {
     const n = etat.en_attente;
     const c = await choisir(`📥 ${n} ticket${n > 1 ? 's attendent' : ' attend'} à la maison`, null,
       [['moi', '🧾 Imprimer le mien seulement'], ['voir', '🗂 Voir les tickets en attente', true]]);
-    if (c === 'voir') { setTimeout(syncTop, 0); await ouvrirFile({ zpl, titre }); return true; }
+    if (c === 'voir') { setTimeout(syncTop, 0); await ouvrirFile({ zpl, titre, miniature }); return true; }
     if (c !== 'moi') { setTimeout(syncTop, 0); return true; }
     mode = 'immediat';
   }
@@ -1041,7 +1055,7 @@ async function imprimerViaJarvis(zpl, T) {
   try {
     r = dymo
       ? await jarvisPost('/api/direct', { zpl, titre, source: 'Zebra Studio', type: 'etiquette' }, 90000)
-      : await jarvisPost('/api/tickets', { zpl, titre, source: 'Zebra Studio', mode }, 90000);
+      : await jarvisPost('/api/tickets', Object.assign({ zpl, titre, source: 'Zebra Studio', mode }, miniature ? { apercu_png: miniature } : {}), 90000);
   } catch (e) {
     if (cancelSend) throw new Error('annulé');
     fill.style.width = '0'; setTimeout(syncTop, 0);
@@ -1147,7 +1161,7 @@ function ouvrirFile(mien) {
     async function imprimer() {
       const ids = tickets.filter(t => choix.has(t.id)).map(t => t.id); // ordre d'arrivée
       if (mien) { // le mien rejoint la file ; coché, il sort en premier
-        const d = verifier(await jarvisPost('/api/tickets', { zpl: mien.zpl, titre: mien.titre, source: 'Zebra Studio', mode: 'file' }, 90000));
+        const d = verifier(await jarvisPost('/api/tickets', Object.assign({ zpl: mien.zpl, titre: mien.titre, source: 'Zebra Studio', mode: 'file' }, mien.miniature ? { apercu_png: mien.miniature } : {}), 90000));
         if (mienCoche) ids.unshift(d.id);
         mien = null;
       }
@@ -1166,14 +1180,22 @@ function ouvrirFile(mien) {
       agir(async () => { verifier(await jarvisFetch(`/api/tickets/${id}`, { method: 'DELETE' }, 15000)); choix.delete(id); });
     }
     const si = (cond, attrs) => (cond ? attrs : {});
-    function ligne(coche, titre, details, basculer, id, cle) {
+    const grands = new Set(); // aperçus agrandis (survivent à rendre())
+    // aperçu : ~160 px, taille réelle (384 px) au toucher ; src = null → « pas d'aperçu »
+    function apercu(src) {
+      if (!src) return h('small', { style: 'display:block;color:var(--mute);font-style:italic' }, 'pas d’aperçu');
+      const grand = grands.has(src);
+      return h('img', { src, alt: 'Aperçu du ticket', 'data-apercu': '', style: `display:block;margin-top:6px;width:${grand ? 384 : 160}px;max-width:100%;height:auto;background:#fff;border-radius:6px;box-shadow:0 0 0 1px var(--line)`,
+        onclick: e => { e.stopPropagation(); grands.has(src) ? grands.delete(src) : grands.add(src); rendre(); } });
+    }
+    function ligne(coche, titre, details, basculer, id, cle, src) {
       const conf = id != null && confirme === id;
       return h('div', { class: 'result', 'data-ticket': cle, onclick: basculer,
           style: 'display:flex;align-items:center;gap:12px;margin:8px 0;padding:12px 14px;cursor:pointer' + (coche ? ';box-shadow:inset 0 0 0 2px var(--pink)' : '') },
         h('span', { style: 'flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-weight:800;color:#fff;'
           + (coche ? 'background:var(--pink);border:2.5px solid var(--pink)' : 'border:2.5px solid #d9c3cb') }, coche ? '✓' : ''),
         h('span', { style: 'flex:1;min-width:0;overflow-wrap:anywhere' }, h('b', { style: 'display:block' }, titre),
-          h('small', { style: 'color:var(--mute)' }, details)),
+          h('small', { style: 'color:var(--mute)' }, details), apercu(src)),
         id == null ? null : h('button', Object.assign({ class: 'mini-chip', 'data-suppr': id, style: conf ? 'background:var(--pink);color:#fff' : '',
           onclick: e => { e.stopPropagation(); supprimer(id); } }, si(occupe, { disabled: '' })), conf ? 'Supprimer ?' : '🗑️'));
     }
@@ -1198,8 +1220,9 @@ function ouvrirFile(mien) {
       }
       const n = choix.size + (mien && mienCoche ? 1 : 0);
       const liste = tickets.map(t => ligne(choix.has(t.id), t.titre, `${t.source} · ${quandCourt(t.cree_le)}`,
-        () => { choix.has(t.id) ? choix.delete(t.id) : choix.add(t.id); rendre(); }, t.id, t.id));
-      if (mien) liste.unshift(ligne(mienCoche, mien.titre || 'Ton ticket', '✨ le tien · sort en premier', () => { mienCoche = !mienCoche; rendre(); }, null, 'mien'));
+        () => { choix.has(t.id) ? choix.delete(t.id) : choix.add(t.id); rendre(); }, t.id, t.id,
+        t.a_apercu ? `${jarvisUrl()}/api/tickets/${t.id}/apercu.png` : null));
+      if (mien) liste.unshift(ligne(mienCoche, mien.titre || 'Ton ticket', '✨ le tien · sort en premier', () => { mienCoche = !mienCoche; rendre(); }, null, 'mien', mien.miniature || null));
       sheet.append(...[
         h('h3', {}, '📥 Tickets en attente'),
         ...liste,
@@ -1258,8 +1281,11 @@ $('btnPrint').onclick = async () => {
   const label = $('printLabel'), fill = $('fill'), paper = $('paper');
   try {
     label.textContent = 'Préparation…';
-    const zpl = buildZpl(await compose());
-    if (viaJarvis() && await imprimerViaJarvis(zpl, T)) return;
+    const pages = await compose();
+    const zpl = buildZpl(pages);
+    // aperçu du ticket pour Jarvis : joint en plus du ZPL, qui part tel quel (jamais pour une étiquette)
+    const miniature = viaJarvis() && state.mode !== 'dymo' ? miniatureTicket(pages[0]) : '';
+    if (viaJarvis() && await imprimerViaJarvis(zpl, T, miniature)) return;
     label.textContent = 'Connexion…';
     if (!(await ensureConnected())) { syncTop(); return; }
     paper.classList.add('printing');
@@ -1721,10 +1747,21 @@ $('sheetBg').addEventListener('click', e => { if (e.target === $('sheetBg')) $('
     try { if (v) localStorage.setItem('zebra-jarvis', v); else localStorage.removeItem('zebra-jarvis'); } catch (_) {}
     if (jarvisUrl() !== avant) ecouterJarvis();
   };
+  // lien vers la page de gestion de Jarvis, construit sur l'adresse réglée ci-dessus (rien en dur dans le code public)
+  const gestion = $('btnGestion');
+  const majGestion = () => {
+    const u = jarvisUrl();
+    if (/^https?:\/\//i.test(u)) { gestion.href = u + '/'; gestion.style.opacity = ''; }
+    else { gestion.removeAttribute('href'); gestion.style.opacity = '.4'; }
+  };
+  gestion.addEventListener('click', e => { if (!gestion.getAttribute('href')) { e.preventDefault(); toast('Saisis d\'abord l\'adresse de Jarvis', true); } });
+  majGestion();
   champ.addEventListener('change', enregistrer);
+  champ.addEventListener('change', () => setTimeout(majGestion, 0));
   $('btnJarvisTest').onclick = async () => {
     enregistrer();
     if (!jarvisUrl()) { info.textContent = 'adresse à saisir'; return; }
+    majGestion();
     info.textContent = 'test…';
     const e = await jarvisEtat();
     info.textContent = !e ? '❌ ne répond pas (Tailscale activé ?)'
