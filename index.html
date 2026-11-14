@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#FFF6EA">
 <title>Zebra Studio</title>
-<link rel="stylesheet" href="fonts.css?v=202611140005">
+<link rel="stylesheet" href="fonts.css?v=202611140158">
 <style>
   :root {
     --bg:#FFF6EA; --card:#FFFFFF; --ink:#1A1823; --mute:#8A8494; --line:#EFE6D8;
@@ -31,7 +31,10 @@
   header.scrolled { box-shadow:0 0 0 100vmax var(--bg), 0 8px 12px -10px rgba(0,0,0,.35); }
   .logo { width:40px; height:40px; border-radius:12px; flex:none; background:
       repeating-linear-gradient(-55deg, var(--ink) 0 6px, var(--card) 6px 12px); box-shadow:var(--shadow); }
-  header h1 { font-family:var(--display); font-weight:800; font-size:26px; letter-spacing:-.02em; margin:0; flex:1; }
+  header .titre { flex:1; min-width:0; }
+  header h1 { font-family:var(--display); font-weight:800; font-size:26px; letter-spacing:-.02em; margin:0; }
+  #batZebra[hidden] { display:none; }
+  #batZebra { display:block; font-size:12px; font-weight:600; color:var(--mute); line-height:1.1; margin-top:1px; white-space:nowrap; }
   header h1 span { color:var(--pink); }
   .pill { display:flex; align-items:center; gap:8px; border:0; background:var(--card); box-shadow:var(--shadow);
     padding:10px 16px; border-radius:999px; font-weight:600; font-size:14px; }
@@ -39,6 +42,15 @@
   .pill.on .dot { background:var(--mint); box-shadow:0 0 0 4px rgba(47,211,154,.18); }
   .pill.err .dot { background:var(--pink); }
   .round { width:42px; height:42px; border-radius:50%; border:0; background:var(--card); box-shadow:var(--shadow); font-size:18px; }
+  header h1 { white-space:nowrap; }
+  @media (max-width:480px) { /* téléphone : en-tête compact, sans défilement horizontal */
+    header { gap:7px; padding-left:12px; padding-right:12px; }
+    .logo { width:30px; height:30px; border-radius:9px; }
+    header h1 { font-size:19px; }
+    header h1 span { display:none; } /* « Zebra » seul sur téléphone */
+    .pill { padding:8px 11px; font-size:13px; gap:6px; }
+    .round { width:34px; height:34px; font-size:16px; }
+  }
 
   main { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; padding:12px 20px 140px; max-width:1180px; margin:0 auto; }
   @media (min-width:760px) { main { grid-template-columns:minmax(0,1fr) 360px; } .side { position:sticky; top:76px; align-self:start; } }
@@ -302,7 +314,7 @@
 <body>
 <header>
   <div class="logo"></div>
-  <h1>Zebra <span>Studio</span></h1>
+  <div class="titre"><h1>Zebra <span>Studio</span></h1><small id="batZebra" hidden></small></div>
   <button class="pill" id="btnFile" style="display:none" aria-label="Tickets en attente sur Jarvis">📥</button>
   <button class="pill" id="btnConnect"><span class="dot"></span><span id="state">Connecter</span></button>
   <button class="round" id="btnFeed" aria-label="Avancer le papier" title="Avancer le papier" style="font-weight:800">⇡</button>
@@ -397,9 +409,9 @@
 <script src="lib/qrcode.js"></script>
 <script src="lib/qrcode_UTF8.js"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=202611140005"></script>
-<script src="draw.js?v=202611140005"></script>
-<script src="label.js?v=202611140005"></script>
-<script src="app.js?v=202611140005"></script>
+<script src="engine.js?v=202611140158"></script>
+<script src="draw.js?v=202611140158"></script>
+<script src="label.js?v=202611140158"></script>
+<script src="app.js?v=202611140158"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 /* Zebra Studio — interface */
 'use strict';
-const APP_VERSION = '202611140005';
+const APP_VERSION = '202611140158';
 
 // ---------- État ----------
 let state = { mode: 'tpe', font: 'sans', frame: true, copies: 1, blocks: [], label: defaultLabel() };
@@ -1107,16 +1107,24 @@ function quandCourt(iso) {
 // Pastille visible seulement si des tickets attendent ET que la Zebra est disponible
 function majPastille() {
   const b = $('btnFile');
-  const n = etatJarvis && etatJarvis.disponible ? etatJarvis.en_attente : 0;
+  const n = viaJarvis() && etatJarvis && etatJarvis.disponible ? etatJarvis.en_attente : 0;
   b.style.display = n ? '' : 'none';
   b.textContent = `📥 ${n}`;
+  majBatterie();
 }
-// État de Jarvis en temps réel (seulement quand la destination est Jarvis)
+// Batterie de la Zebra (lue par Jarvis) : discrète sous le titre ; rien si Jarvis ne répond pas ou si la valeur est inconnue
+function majBatterie() {
+  const el = $('batZebra'), e = etatJarvis, p = e ? e.batterie_pourcent : null;
+  const ok = typeof p === 'number' && p >= 0 && p <= 100;
+  el.hidden = !ok;
+  if (ok) { el.textContent = `${e.batterie_charge ? '⚡' : '🔋'} ${Math.round(p)} %`; el.title = 'Batterie de la Zebra (lue par Jarvis)'; }
+}
+// État de Jarvis en temps réel (adresse réglée) : pastille 📥 (destination Jarvis seulement) et batterie
 function ecouterJarvis() {
   if (fluxJarvis) { fluxJarvis.close(); fluxJarvis = null; }
   clearTimeout(minuteurPerte);
   etatJarvis = null; majPastille();
-  if (!viaJarvis() || !window.EventSource) return;
+  if (!jarvisUrl() || !window.EventSource) return; // écoute dès qu'une adresse est réglée : la batterie reste visible même en Bluetooth direct
   fluxJarvis = new EventSource(jarvisUrl() + '/api/evenements');
   fluxJarvis.addEventListener('etat', e => {
     clearTimeout(minuteurPerte);
